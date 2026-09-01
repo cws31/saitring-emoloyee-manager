@@ -1,7 +1,5 @@
 package com.sonuSaitring.sonuSaitringManagement.Attendance.entity;
 
-
-
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -15,7 +13,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "attendances", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"employee_id", "attendance_date"})
+        @UniqueConstraint(columnNames = { "employee_id", "attendance_date" })
 })
 @Data
 @NoArgsConstructor
@@ -35,11 +33,14 @@ public class Attendance {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private AttendanceStatus status; 
+    private AttendanceStatus status;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(length = 255)
+    private String reason;
 
     public enum AttendanceStatus {
         PRESENT, ABSENT, HALF_DAY
