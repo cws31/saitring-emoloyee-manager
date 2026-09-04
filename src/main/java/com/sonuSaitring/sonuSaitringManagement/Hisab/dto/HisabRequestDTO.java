@@ -1,4 +1,4 @@
-package com.sonuSaitring.sonuSaitringManagement.monthClosing.dto;
+package com.sonuSaitring.sonuSaitringManagement.Hisab.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -10,9 +10,8 @@ import java.util.Map;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class MonthClosingRequestDTO {
+public class HisabRequestDTO {
     private int year;
     private int month;
-
     private Map<Long, BigDecimal> employeeExtraMoneyMap;
 }
