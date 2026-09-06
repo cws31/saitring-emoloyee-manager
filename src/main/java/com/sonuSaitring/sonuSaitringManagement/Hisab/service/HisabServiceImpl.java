@@ -52,6 +52,18 @@ public class HisabServiceImpl implements HisabService {
         LocalDate settlementCutoffDate = endDate.plusDays(10);
         LocalDate nextMonthFirstDay = startDate.plusMonths(1);
 
+        LocalDate prevMonthDate = startDate.minusMonths(1);
+        Hisab prevHisab = hisabRepository.findByYearAndMonth(prevMonthDate.getYear(), prevMonthDate.getMonthValue())
+                .orElse(null);
+        Map<Long, BigDecimal> prevRemainingBalanceMap = new java.util.HashMap<>();
+        if (prevHisab != null && prevHisab.getDetails() != null) {
+            for (HisabDetail pd : prevHisab.getDetails()) {
+                if (pd.getEmployee() != null && pd.getRemainingBalance() != null) {
+                    prevRemainingBalanceMap.put(pd.getEmployee().getId(), pd.getRemainingBalance());
+                }
+            }
+        }
+
         List<Employee> activeEmployees = employeeRepository.findAll();
 
         List<EmployeeSettlement> monthSettlements = settlementRepository.findBySettlementDateBetween(startDate,
@@ -59,7 +71,6 @@ public class HisabServiceImpl implements HisabService {
 
         String currentMonthKey = month + "/" + year;
 
-       
         List<EmployeeSettlement> filteredMonthSettlements = monthSettlements.stream()
                 .filter(s -> s.getEmployee() != null && s.getAmountPaid() != null)
                 .filter(s -> {
@@ -71,7 +82,6 @@ public class HisabServiceImpl implements HisabService {
                 })
                 .collect(Collectors.toList());
 
-  
         Map<Long, BigDecimal> paidAmountMap = filteredMonthSettlements.stream()
                 .collect(Collectors.groupingBy(
                         s -> s.getEmployee().getId(),
@@ -116,19 +126,28 @@ public class HisabServiceImpl implements HisabService {
             List<EmployeeAdvance> advances = advanceRepository.findByEmployeeIdAndPaymentDateBetween(employee.getId(),
                     startDate, endDate);
 
-            Double totalAdvanceDouble = 0.0;
+            BigDecimal currentMonthAdvance = BigDecimal.ZERO;
             if (advances != null) {
-                totalAdvanceDouble = advances.stream()
-                        .map(EmployeeAdvance::getAmount)
-                        .filter(amt -> amt != null)
-                        .reduce(0.0, Double::sum);
+                for (EmployeeAdvance a : advances) {
+                    String note = a.getNote() != null ? a.getNote().toLowerCase() : "";
+                    boolean isCarryForward = note.contains("carry-forward")
+                            || note.startsWith("previous month balance carry-forward");
+
+                    if (!isCarryForward && a.getAmount() != null) {
+                        currentMonthAdvance = currentMonthAdvance.add(BigDecimal.valueOf(a.getAmount()));
+                    }
+                }
             }
-            BigDecimal totalAdvance = BigDecimal.valueOf(totalAdvanceDouble);
 
             BigDecimal rate = employee.getInitialRate() != null ? employee.getInitialRate() : BigDecimal.ZERO;
             BigDecimal totalEarning = totalPresences.multiply(rate);
-            BigDecimal extraMoney = BigDecimal.ZERO;
-            BigDecimal netPayable = totalEarning.subtract(totalAdvance).add(extraMoney);
+            BigDecimal previousMonthBalance = prevRemainingBalanceMap.getOrDefault(employee.getId(), BigDecimal.ZERO);
+
+            BigDecimal safeCurrentMonthAdvance = currentMonthAdvance != null ? currentMonthAdvance : BigDecimal.ZERO;
+
+            BigDecimal currentMonthAdvanceOnly = safeCurrentMonthAdvance;
+
+            BigDecimal netPayable = totalEarning.subtract(safeCurrentMonthAdvance).add(previousMonthBalance);
             BigDecimal amountPaid = paidAmountMap.getOrDefault(employee.getId(), BigDecimal.ZERO);
             BigDecimal remainingBalance = netPayable.subtract(amountPaid);
 
@@ -139,8 +158,9 @@ public class HisabServiceImpl implements HisabService {
             detail.setTotalPresences(totalPresences);
             detail.setRate(rate);
             detail.setTotalEarning(totalEarning);
-            detail.setTotalAdvance(totalAdvance);
-            detail.setExtraMoney(extraMoney);
+            detail.setTotalAdvance(currentMonthAdvanceOnly);
+            detail.setPreviousBalance(previousMonthBalance); 
+            detail.setExtraMoney(BigDecimal.ZERO);
             detail.setNetPayable(netPayable);
             detail.setAmountPaid(amountPaid);
             detail.setRemainingBalance(remainingBalance);
@@ -150,13 +170,12 @@ public class HisabServiceImpl implements HisabService {
                     .collect(Collectors.toList());
             detail.setSettlements(empSpecificSettlements);
 
-          
-            String carryForwardNote = "Last month balance carry-forward from " + month + "/" + year;
+            String carryForwardNote = "Previous month balance carry-forward from " + month + "/" + year;
             List<EmployeeAdvance> existingNextMonthAdvances = advanceRepository.findByEmployeeIdAndPaymentDateBetween(
                     employee.getId(), nextMonthFirstDay, nextMonthFirstDay);
 
             EmployeeAdvance existingCarryForward = existingNextMonthAdvances.stream()
-                    .filter(a -> a.getNote() != null && a.getNote().contains(carryForwardNote))
+                    .filter(a -> a.getNote() != null && a.getNote().startsWith("Previous month balance carry-forward"))
                     .findFirst()
                     .orElse(null);
 
@@ -164,12 +183,15 @@ public class HisabServiceImpl implements HisabService {
                 if (existingCarryForward == null) {
                     EmployeeAdvance carryForwardAdvance = new EmployeeAdvance();
                     carryForwardAdvance.setEmployee(employee);
-                    carryForwardAdvance.setAmount(remainingBalance.abs().doubleValue());
+                    carryForwardAdvance.setAmount(remainingBalance.doubleValue());
                     carryForwardAdvance.setPaymentDate(nextMonthFirstDay);
-                    carryForwardAdvance.setNote(carryForwardNote);
+                    carryForwardAdvance.setNote(carryForwardNote
+                            + (remainingBalance.compareTo(BigDecimal.ZERO) < 0 ? " (Due)" : " (Extra Credit)"));
                     advanceRepository.save(carryForwardAdvance);
                 } else {
-                    existingCarryForward.setAmount(remainingBalance.abs().doubleValue());
+                    existingCarryForward.setAmount(remainingBalance.doubleValue());
+                    existingCarryForward.setNote(carryForwardNote
+                            + (remainingBalance.compareTo(BigDecimal.ZERO) < 0 ? " (Due)" : " (Extra Credit)"));
                     advanceRepository.save(existingCarryForward);
                 }
             } else {

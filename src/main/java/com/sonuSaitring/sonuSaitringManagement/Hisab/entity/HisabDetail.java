@@ -31,6 +31,7 @@ public class HisabDetail {
     private BigDecimal rate;
     private BigDecimal totalEarning;
     private BigDecimal totalAdvance;
+    private BigDecimal previousBalance;
     private BigDecimal extraMoney;
     private BigDecimal netPayable;
     private BigDecimal amountPaid;

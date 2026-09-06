@@ -41,7 +41,6 @@ public class HisabController {
         return ResponseEntity.ok(monthClosingService.getMonthClosingByYearAndMonth(year, month));
     }
 
-   
     @RequestMapping(value = "/detail/{detailId}/complete", method = { RequestMethod.POST, RequestMethod.PUT,
             RequestMethod.PATCH })
     public ResponseEntity<HisabDetail> toggleHisabComplete(
