@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
-public class EmployeeSettlementServiceImpl {
+public class EmployeeSettlementServiceImpl implements EmployeeSettlementService {
 
     @Autowired
     private EmployeeSettlementRepository settlementRepository;
