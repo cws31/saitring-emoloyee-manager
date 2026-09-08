@@ -2,9 +2,7 @@ package com.sonuSaitring.sonuSaitringManagement.Attendance.dto;
 
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
-
 import java.time.LocalDate;
-
 import com.sonuSaitring.sonuSaitringManagement.Attendance.entity.Attendance;
 
 @Data
@@ -17,5 +15,6 @@ public class AttendanceRequestDTO {
 
     @NotNull(message = "Attendance status is required")
     private Attendance.AttendanceStatus status;
+
     private String reason;
 }

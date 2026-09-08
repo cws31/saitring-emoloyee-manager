@@ -1,15 +1,15 @@
 package com.sonuSaitring.sonuSaitringManagement.Attendance.service;
 
 
+import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceRequestDTO;
+import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceResponseDTO;
 
-import java.time.LocalDate;
 import java.util.List;
 
-import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceRequestDTO;
-import com.sonuSaitring.sonuSaitringManagement.Attendance.entity.Attendance;
-
 public interface AttendanceService {
-    Attendance markAttendance(AttendanceRequestDTO requestDTO);
-    List<Attendance> getMonthlyAttendance(int year, int month);
-    List<Attendance> getEmployeeMonthlyAttendance(Long employeeId, int year, int month);
+    AttendanceResponseDTO markAttendance(AttendanceRequestDTO requestDTO);
+
+    List<AttendanceResponseDTO> getMonthlyAttendance(int year, int month);
+
+    List<AttendanceResponseDTO> getEmployeeMonthlyAttendance(Long employeeId, int year, int month);
 }
