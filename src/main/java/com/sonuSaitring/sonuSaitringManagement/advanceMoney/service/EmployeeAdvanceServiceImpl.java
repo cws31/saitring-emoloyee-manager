@@ -1,5 +1,7 @@
 package com.sonuSaitring.sonuSaitringManagement.advanceMoney.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +17,8 @@ import java.util.List;
 @Service
 public class EmployeeAdvanceServiceImpl implements EmployeeAdvanceService {
 
+    private static final Logger logger = LoggerFactory.getLogger(EmployeeAdvanceServiceImpl.class);
+
     @Autowired
     private EmployeeAdvanceRepository advanceRepository;
 
@@ -23,8 +27,13 @@ public class EmployeeAdvanceServiceImpl implements EmployeeAdvanceService {
 
     @Override
     public EmployeeAdvance recordAdvance(AdvanceRequestDTO requestDTO) {
+        logger.info("Recording advance amount {} for employeeId: {}", requestDTO.getAmount(),
+                requestDTO.getEmployeeId());
         Employee employee = employeeRepository.findById(requestDTO.getEmployeeId())
-                .orElseThrow(() -> new RuntimeException("Employee not found with id: " + requestDTO.getEmployeeId()));
+                .orElseThrow(() -> {
+                    logger.error("Employee not found with id: {} while recording advance", requestDTO.getEmployeeId());
+                    return new RuntimeException("Employee not found with id: " + requestDTO.getEmployeeId());
+                });
 
         EmployeeAdvance advance = new EmployeeAdvance();
         advance.setEmployee(employee);
@@ -37,6 +46,7 @@ public class EmployeeAdvanceServiceImpl implements EmployeeAdvanceService {
 
     @Override
     public EmployeeAdvance updateAdvance(Long id, AdvanceRequestDTO requestDTO) {
+        logger.info("Updating advance record ID: {}", id);
         EmployeeAdvance existingAdvance = advanceRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Advance record not found with id: " + id));
 
@@ -55,6 +65,7 @@ public class EmployeeAdvanceServiceImpl implements EmployeeAdvanceService {
 
     @Override
     public List<EmployeeAdvance> getMonthlyAdvances(int year, int month) {
+        logger.info("Fetching monthly advances for Year: {}, Month: {}", year, month);
         LocalDate startDate = LocalDate.of(year, month, 1);
         LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
         return advanceRepository.findByPaymentDateBetween(startDate, endDate);
@@ -62,6 +73,7 @@ public class EmployeeAdvanceServiceImpl implements EmployeeAdvanceService {
 
     @Override
     public void deleteAdvance(Long id) {
+        logger.info("Deleting advance record ID: {}", id);
         advanceRepository.deleteById(id);
     }
 }

@@ -12,6 +12,8 @@ import com.sonuSaitring.sonuSaitringManagement.employee.entity.Employee;
 import com.sonuSaitring.sonuSaitringManagement.employee.repository.EmployeeRepository;
 import com.sonuSaitring.sonuSaitringManagement.sattlement.entity.EmployeeSettlement;
 import com.sonuSaitring.sonuSaitringManagement.sattlement.repository.EmployeeSettlementRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +28,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class HisabServiceImpl implements HisabService {
+
+    private static final Logger logger = LoggerFactory.getLogger(HisabServiceImpl.class);
 
     @Autowired
     private HisabRepository hisabRepository;
@@ -47,6 +51,7 @@ public class HisabServiceImpl implements HisabService {
 
     @Transactional
     public Hisab generateMonthReport(int year, int month) {
+        logger.info("=== Starting Month Report Generation for Year: {}, Month: {} ===", year, month);
         LocalDate startDate = LocalDate.of(year, month, 1);
         LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
         LocalDate settlementCutoffDate = endDate.plusDays(10);
@@ -65,6 +70,7 @@ public class HisabServiceImpl implements HisabService {
         }
 
         List<Employee> activeEmployees = employeeRepository.findAll();
+        logger.info("Found {} active employees for month closing processing.", activeEmployees.size());
 
         List<EmployeeSettlement> monthSettlements = settlementRepository.findBySettlementDateBetween(startDate,
                 settlementCutoffDate);
@@ -91,6 +97,7 @@ public class HisabServiceImpl implements HisabService {
         Hisab hisabRecord = hisabRepository
                 .findByYearAndMonth(year, month)
                 .orElseGet(() -> {
+                    logger.info("Creating new Hisab record container for Year: {}, Month: {}", year, month);
                     Hisab hr = new Hisab();
                     hr.setYear(year);
                     hr.setMonth(month);
@@ -142,10 +149,7 @@ public class HisabServiceImpl implements HisabService {
             BigDecimal rate = employee.getInitialRate() != null ? employee.getInitialRate() : BigDecimal.ZERO;
             BigDecimal totalEarning = totalPresences.multiply(rate);
             BigDecimal previousMonthBalance = prevRemainingBalanceMap.getOrDefault(employee.getId(), BigDecimal.ZERO);
-
             BigDecimal safeCurrentMonthAdvance = currentMonthAdvance != null ? currentMonthAdvance : BigDecimal.ZERO;
-
-            BigDecimal currentMonthAdvanceOnly = safeCurrentMonthAdvance;
 
             BigDecimal netPayable = totalEarning.subtract(safeCurrentMonthAdvance).add(previousMonthBalance);
             BigDecimal amountPaid = paidAmountMap.getOrDefault(employee.getId(), BigDecimal.ZERO);
@@ -158,8 +162,8 @@ public class HisabServiceImpl implements HisabService {
             detail.setTotalPresences(totalPresences);
             detail.setRate(rate);
             detail.setTotalEarning(totalEarning);
-            detail.setTotalAdvance(currentMonthAdvanceOnly);
-            detail.setPreviousBalance(previousMonthBalance); 
+            detail.setTotalAdvance(safeCurrentMonthAdvance);
+            detail.setPreviousBalance(previousMonthBalance);
             detail.setExtraMoney(BigDecimal.ZERO);
             detail.setNetPayable(netPayable);
             detail.setAmountPaid(amountPaid);
@@ -214,14 +218,20 @@ public class HisabServiceImpl implements HisabService {
             detail.setMonthClosing(hisabRecord);
         }
 
-        return hisabRepository.save(hisabRecord);
+        Hisab savedHisab = hisabRepository.save(hisabRecord);
+        logger.info("=== Successfully completed Month Report Generation for Year: {}, Month: {} ===", year, month);
+        return savedHisab;
     }
 
     @Override
     @Transactional
     public HisabDetail markEmployeeHisabCompleted(Long detailId, boolean completed) {
+        logger.info("Toggling hisab completion status for detailId: {} to {}", detailId, completed);
         HisabDetail detail = hisabDetailRepository.findById(detailId)
-                .orElseThrow(() -> new RuntimeException("Hisab detail not found with id: " + detailId));
+                .orElseThrow(() -> {
+                    logger.error("Hisab detail not found with id: {}", detailId);
+                    return new RuntimeException("Hisab detail not found with id: " + detailId);
+                });
 
         detail.setHisabCompleted(completed);
         return hisabDetailRepository.save(detail);
@@ -229,11 +239,13 @@ public class HisabServiceImpl implements HisabService {
 
     @Override
     public List<Hisab> getAllMonthClosings() {
+        logger.info("Fetching all month closing records.");
         return hisabRepository.findAll();
     }
 
     @Override
     public Hisab getMonthClosingById(Long id) {
+        logger.info("Fetching month closing by ID: {}", id);
         return hisabRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Hisab record not found with id: " + id));
     }

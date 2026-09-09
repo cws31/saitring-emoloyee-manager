@@ -1,5 +1,7 @@
 package com.sonuSaitring.sonuSaitringManagement.Attendance.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +22,8 @@ import java.util.stream.Collectors;
 @Transactional
 public class AttendanceServiceImpl implements AttendanceService {
 
+    private static final Logger logger = LoggerFactory.getLogger(AttendanceServiceImpl.class);
+
     @Autowired
     private AttendanceRepository attendanceRepository;
 
@@ -28,18 +32,27 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     public AttendanceResponseDTO markAttendance(AttendanceRequestDTO requestDTO) {
+        logger.info("Marking attendance for employeeId: {} on date: {}", requestDTO.getEmployeeId(),
+                requestDTO.getAttendanceDate());
+
         Employee employee = employeeRepository.findById(requestDTO.getEmployeeId())
-                .orElseThrow(() -> new RuntimeException("Employee not found with id: " + requestDTO.getEmployeeId()));
+                .orElseThrow(() -> {
+                    logger.error("Failed to mark attendance: Employee not found with id: {}",
+                            requestDTO.getEmployeeId());
+                    return new RuntimeException("Employee not found with id: " + requestDTO.getEmployeeId());
+                });
 
         Optional<Attendance> existing = attendanceRepository.findByEmployeeIdAndAttendanceDate(
                 requestDTO.getEmployeeId(), requestDTO.getAttendanceDate());
 
         Attendance attendance;
         if (existing.isPresent()) {
+            logger.info("Updating existing attendance record for employeeId: {}", requestDTO.getEmployeeId());
             attendance = existing.get();
             attendance.setStatus(requestDTO.getStatus());
             attendance.setReason(requestDTO.getReason());
         } else {
+            logger.info("Creating new attendance record for employeeId: {}", requestDTO.getEmployeeId());
             attendance = new Attendance();
             attendance.setEmployee(employee);
             attendance.setAttendanceDate(requestDTO.getAttendanceDate());
@@ -48,12 +61,14 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
 
         Attendance savedAttendance = attendanceRepository.save(attendance);
+        logger.info("Successfully saved attendance ID: {}", savedAttendance.getId());
         return mapToResponseDTO(savedAttendance);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<AttendanceResponseDTO> getMonthlyAttendance(int year, int month) {
+        logger.info("Fetching monthly attendance for Year: {}, Month: {}", year, month);
         LocalDate startDate = LocalDate.of(year, month, 1);
         LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
 
@@ -65,6 +80,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     @Override
     @Transactional(readOnly = true)
     public List<AttendanceResponseDTO> getEmployeeMonthlyAttendance(Long employeeId, int year, int month) {
+        logger.info("Fetching monthly attendance for EmployeeId: {}, Year: {}, Month: {}", employeeId, year, month);
         LocalDate startDate = LocalDate.of(year, month, 1);
         LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
 
