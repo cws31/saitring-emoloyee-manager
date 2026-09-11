@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -31,7 +32,8 @@ import java.util.stream.Collectors;
 @Service
 public class HisabServiceImpl implements HisabService {
 
-    private static final Logger logger = LoggerFactory.getLogger(HisabServiceImpl.class);
+    private static final Logger logger =
+            LoggerFactory.getLogger(HisabServiceImpl.class);
 
     @Autowired
     private HisabRepository hisabRepository;
@@ -72,9 +74,11 @@ public class HisabServiceImpl implements HisabService {
 
         Hisab prevHisab = hisabRepository.findByYearAndMonth(
                 prevMonthDate.getYear(),
-                prevMonthDate.getMonthValue()).orElse(null);
+                prevMonthDate.getMonthValue())
+                .orElse(null);
 
-        Map<Long, BigDecimal> prevRemainingBalanceMap = new java.util.HashMap<>();
+        Map<Long, BigDecimal> prevRemainingBalanceMap =
+                new java.util.HashMap<>();
 
         if (prevHisab != null
                 && prevHisab.getDetails() != null) {
@@ -91,45 +95,54 @@ public class HisabServiceImpl implements HisabService {
             }
         }
 
-        List<Employee> activeEmployees = employeeRepository.findAll();
+        List<Employee> activeEmployees = employeeRepository.findAll()
+                .stream()
+                .filter(employee -> !employee.isBlocked())
+                .collect(Collectors.toList());
 
         logger.info(
                 "Found {} active employees for month closing processing.",
                 activeEmployees.size());
 
-        List<EmployeeSettlement> monthSettlements = settlementRepository.findBySettlementDateBetween(
-                startDate,
-                settlementCutoffDate);
+
+        List<EmployeeSettlement> monthSettlements =
+                settlementRepository.findBySettlementDateBetween(
+                        startDate,
+                        settlementCutoffDate);
 
         String currentMonthKey = month + "/" + year;
 
-        List<EmployeeSettlement> filteredMonthSettlements = monthSettlements.stream()
-                .filter(s -> s.getEmployee() != null
-                        && s.getAmountPaid() != null)
-                .filter(s -> {
+        List<EmployeeSettlement> filteredMonthSettlements =
+                monthSettlements.stream()
+                        .filter(s ->
+                                s.getEmployee() != null
+                                        && s.getAmountPaid() != null)
+                        .filter(s -> {
 
-                    String note = s.getNote() != null
-                            ? s.getNote().toLowerCase()
-                            : "";
+                            String note = s.getNote() != null
+                                    ? s.getNote().toLowerCase()
+                                    : "";
 
-                    if (note.contains("closing")
-                            || note.contains("month closing")) {
+                            if (note.contains("closing")
+                                    || note.contains("month closing")) {
 
-                        return note.contains(currentMonthKey);
-                    }
+                                return note.contains(currentMonthKey);
+                            }
 
-                    return true;
-                })
-                .collect(Collectors.toList());
+                            return true;
+                        })
+                        .collect(Collectors.toList());
 
-        Map<Long, BigDecimal> paidAmountMap = filteredMonthSettlements.stream()
-                .collect(Collectors.groupingBy(
-                        s -> s.getEmployee().getId(),
-                        Collectors.mapping(
-                                EmployeeSettlement::getAmountPaid,
-                                Collectors.reducing(
-                                        BigDecimal.ZERO,
-                                        BigDecimal::add))));
+        Map<Long, BigDecimal> paidAmountMap =
+                filteredMonthSettlements.stream()
+                        .collect(Collectors.groupingBy(
+                                s -> s.getEmployee().getId(),
+                                Collectors.mapping(
+                                        EmployeeSettlement::getAmountPaid,
+                                        Collectors.reducing(
+                                                BigDecimal.ZERO,
+                                                BigDecimal::add))));
+
 
         Hisab hisabRecord = hisabRepository
                 .findByYearAndMonth(year, month)
@@ -149,7 +162,8 @@ public class HisabServiceImpl implements HisabService {
                     return hr;
                 });
 
-        Map<Long, HisabDetail> existingDetailsMap = new java.util.HashMap<>();
+        Map<Long, HisabDetail> existingDetailsMap =
+                new java.util.HashMap<>();
 
         if (hisabRecord.getDetails() != null) {
 
@@ -161,14 +175,19 @@ public class HisabServiceImpl implements HisabService {
                             d -> d));
         }
 
+        BigDecimal totalPayable = BigDecimal.ZERO;
+
+        BigDecimal totalOverAdvance = BigDecimal.ZERO;
+
         List<HisabDetail> newDetailsList = new ArrayList<>();
 
         for (Employee employee : activeEmployees) {
 
-            List<Attendance> attendances = attendanceRepository.findByEmployeeIdAndMonth(
-                    employee.getId(),
-                    startDate,
-                    endDate);
+            List<Attendance> attendances =
+                    attendanceRepository.findByEmployeeIdAndMonth(
+                            employee.getId(),
+                            startDate,
+                            endDate);
 
             BigDecimal totalPresences = BigDecimal.ZERO;
 
@@ -176,30 +195,35 @@ public class HisabServiceImpl implements HisabService {
 
                 for (Attendance attendance : attendances) {
 
-                    String statusStr = attendance.getStatus() != null
-                            ? attendance.getStatus().name()
-                            : "";
+                    String statusStr =
+                            attendance.getStatus() != null
+                                    ? attendance.getStatus().name()
+                                    : "";
 
                     if ("PRESENT".equalsIgnoreCase(statusStr)) {
 
-                        totalPresences = totalPresences.add(
-                                BigDecimal.ONE);
+                        totalPresences =
+                                totalPresences.add(BigDecimal.ONE);
 
                     } else if ("HALF_DAY".equalsIgnoreCase(statusStr)) {
 
-                        totalPresences = totalPresences.add(
-                                new BigDecimal("0.5"));
+                        totalPresences =
+                                totalPresences.add(
+                                        new BigDecimal("0.5"));
                     }
                 }
             }
 
-            List<EmployeeAdvance> advances = advanceRepository
-                    .findByEmployeeIdAndPaymentDateBetween(
-                            employee.getId(),
-                            startDate,
-                            endDate);
 
-            BigDecimal currentMonthAdvance = BigDecimal.ZERO;
+            List<EmployeeAdvance> advances =
+                    advanceRepository
+                            .findByEmployeeIdAndPaymentDateBetween(
+                                    employee.getId(),
+                                    startDate,
+                                    endDate);
+
+            BigDecimal currentMonthAdvance =
+                    BigDecimal.ZERO;
 
             if (advances != null) {
 
@@ -209,96 +233,148 @@ public class HisabServiceImpl implements HisabService {
                             ? a.getNote().toLowerCase()
                             : "";
 
-                    boolean isCarryForward = note.contains("carry-forward")
-                            || note.startsWith(
-                                    "previous month balance carry-forward");
+                    boolean isCarryForward =
+                            note.contains("carry-forward")
+                                    || note.startsWith(
+                                            "previous month balance carry-forward");
 
                     if (!isCarryForward
                             && a.getAmount() != null) {
 
-                        currentMonthAdvance = currentMonthAdvance.add(
-                                BigDecimal.valueOf(
-                                        a.getAmount()));
+                        currentMonthAdvance =
+                                currentMonthAdvance.add(
+                                        BigDecimal.valueOf(
+                                                a.getAmount()));
                     }
                 }
             }
 
-            BigDecimal rate = employee.getInitialRate() != null
-                    ? employee.getInitialRate()
-                    : BigDecimal.ZERO;
 
-            BigDecimal totalEarning = totalPresences.multiply(rate);
+            BigDecimal rate =
+                    employee.getInitialRate() != null
+                            ? employee.getInitialRate()
+                            : BigDecimal.ZERO;
 
-            BigDecimal previousMonthBalance = prevRemainingBalanceMap.getOrDefault(
-                    employee.getId(),
-                    BigDecimal.ZERO);
+            BigDecimal totalEarning =
+                    totalPresences.multiply(rate);
 
-            BigDecimal safeCurrentMonthAdvance = currentMonthAdvance != null
-                    ? currentMonthAdvance
-                    : BigDecimal.ZERO;
+       
 
-            BigDecimal netPayable = totalEarning
-                    .subtract(safeCurrentMonthAdvance)
-                    .add(previousMonthBalance);
+            BigDecimal previousMonthBalance =
+                    prevRemainingBalanceMap.getOrDefault(
+                            employee.getId(),
+                            BigDecimal.ZERO);
 
-            BigDecimal amountPaid = paidAmountMap.getOrDefault(
-                    employee.getId(),
-                    BigDecimal.ZERO);
+        
 
-            BigDecimal remainingBalance = netPayable.subtract(amountPaid);
+            BigDecimal safeCurrentMonthAdvance =
+                    currentMonthAdvance != null
+                            ? currentMonthAdvance
+                            : BigDecimal.ZERO;
 
-            HisabDetail detail = existingDetailsMap.getOrDefault(
-                    employee.getId(),
-                    new HisabDetail());
+          
+
+            BigDecimal netPayable =
+                    totalEarning
+                            .subtract(safeCurrentMonthAdvance)
+                            .add(previousMonthBalance);
+
+       
+
+            BigDecimal amountPaid =
+                    paidAmountMap.getOrDefault(
+                            employee.getId(),
+                            BigDecimal.ZERO);
+
+
+            BigDecimal remainingBalance =
+                    netPayable.subtract(amountPaid);
+
+            if (remainingBalance.compareTo(BigDecimal.ZERO) > 0) {
+
+                totalPayable =
+                        totalPayable.add(remainingBalance);
+
+            } else if (remainingBalance.compareTo(BigDecimal.ZERO) < 0) {
+
+                totalOverAdvance =
+                        totalOverAdvance.add(
+                                remainingBalance.abs());
+            }
+
+            HisabDetail detail =
+                    existingDetailsMap.getOrDefault(
+                            employee.getId(),
+                            new HisabDetail());
 
             detail.setMonthClosing(hisabRecord);
+
             detail.setEmployee(employee);
+
             detail.setEmployeeName(employee.getName());
+
             detail.setTotalPresences(totalPresences);
+
             detail.setRate(rate);
+
             detail.setTotalEarning(totalEarning);
+
             detail.setTotalAdvance(safeCurrentMonthAdvance);
+
             detail.setPreviousBalance(previousMonthBalance);
+
             detail.setExtraMoney(BigDecimal.ZERO);
+
             detail.setNetPayable(netPayable);
+
             detail.setAmountPaid(amountPaid);
+
             detail.setRemainingBalance(remainingBalance);
 
-            List<EmployeeSettlement> empSpecificSettlements = filteredMonthSettlements.stream()
-                    .filter(s -> s.getEmployee()
-                            .getId()
-                            .equals(employee.getId()))
-                    .collect(Collectors.toList());
+
+            List<EmployeeSettlement> empSpecificSettlements =
+                    filteredMonthSettlements.stream()
+                            .filter(s -> s.getEmployee()
+                                    .getId()
+                                    .equals(employee.getId()))
+                            .collect(Collectors.toList());
 
             detail.setSettlements(
                     empSpecificSettlements);
 
-            String carryForwardNote = "Previous month balance carry-forward from "
-                    + month
-                    + "/"
-                    + year;
 
-            List<EmployeeAdvance> existingNextMonthAdvances = advanceRepository
-                    .findByEmployeeIdAndPaymentDateBetween(
-                            employee.getId(),
-                            nextMonthFirstDay,
-                            nextMonthFirstDay);
+            String carryForwardNote =
+                    "Previous month balance carry-forward from "
+                            + month
+                            + "/"
+                            + year;
 
-            EmployeeAdvance existingCarryForward = existingNextMonthAdvances.stream()
-                    .filter(a -> a.getNote() != null
-                            && a.getNote().startsWith(
-                                    "Previous month balance carry-forward"))
-                    .findFirst()
-                    .orElse(null);
+            List<EmployeeAdvance> existingNextMonthAdvances =
+                    advanceRepository
+                            .findByEmployeeIdAndPaymentDateBetween(
+                                    employee.getId(),
+                                    nextMonthFirstDay,
+                                    nextMonthFirstDay);
+
+            EmployeeAdvance existingCarryForward =
+                    existingNextMonthAdvances.stream()
+                            .filter(a ->
+                                    a.getNote() != null
+                                            && a.getNote().startsWith(
+                                                    "Previous month balance carry-forward"))
+                            .findFirst()
+                            .orElse(null);
 
             if (remainingBalance.compareTo(
                     BigDecimal.ZERO) != 0) {
 
                 if (existingCarryForward == null) {
 
-                    EmployeeAdvance carryForwardAdvance = new EmployeeAdvance();
+                    EmployeeAdvance carryForwardAdvance =
+                            new EmployeeAdvance();
 
-                    carryForwardAdvance.setEmployee(employee);
+                    carryForwardAdvance.setEmployee(
+                            employee);
 
                     carryForwardAdvance.setAmount(
                             remainingBalance.doubleValue());
@@ -335,6 +411,7 @@ public class HisabServiceImpl implements HisabService {
             } else {
 
                 if (existingCarryForward != null) {
+
                     advanceRepository.delete(
                             existingCarryForward);
                 }
@@ -342,6 +419,19 @@ public class HisabServiceImpl implements HisabService {
 
             newDetailsList.add(detail);
         }
+
+        hisabRecord.setTotalEmployees(
+                (long) activeEmployees.size());
+
+        hisabRecord.setTotalPayable(
+                totalPayable.setScale(
+                        2,
+                        RoundingMode.HALF_UP));
+
+        hisabRecord.setTotalOverAdvance(
+                totalOverAdvance.setScale(
+                        2,
+                        RoundingMode.HALF_UP));
 
         if (hisabRecord.getDetails() == null) {
 
@@ -361,8 +451,15 @@ public class HisabServiceImpl implements HisabService {
                     hisabRecord);
         }
 
-        Hisab savedHisab = hisabRepository.save(
-                hisabRecord);
+
+        Hisab savedHisab =
+                hisabRepository.save(hisabRecord);
+
+        logger.info(
+                "Month Closing Summary - Employees: {}, Payable: {}, Over Advance: {}",
+                activeEmployees.size(),
+                totalPayable,
+                totalOverAdvance);
 
         logger.info(
                 "=== Successfully completed Month Report Generation for Year: {}, Month: {} ===",
@@ -383,18 +480,19 @@ public class HisabServiceImpl implements HisabService {
                 detailId,
                 completed);
 
-        HisabDetail detail = hisabDetailRepository
-                .findById(detailId)
-                .orElseThrow(() -> {
+        HisabDetail detail =
+                hisabDetailRepository
+                        .findById(detailId)
+                        .orElseThrow(() -> {
 
-                    logger.warn(
-                            "Hisab detail not found with id: {}",
-                            detailId);
+                            logger.warn(
+                                    "Hisab detail not found with id: {}",
+                                    detailId);
 
-                    return new ResourceNotFoundException(
-                            "Hisab detail not found with id: "
-                                    + detailId);
-                });
+                            return new ResourceNotFoundException(
+                                    "Hisab detail not found with id: "
+                                            + detailId);
+                        });
 
         detail.setHisabCompleted(completed);
 
