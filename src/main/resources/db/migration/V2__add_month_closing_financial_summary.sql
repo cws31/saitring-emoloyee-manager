@@ -1,0 +1,4 @@
+ALTER TABLE month_closings
+    ADD COLUMN total_employees BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN total_payable DECIMAL(38,2) NOT NULL DEFAULT 0.00,
+    ADD COLUMN total_over_advance DECIMAL(38,2) NOT NULL DEFAULT 0.00;
