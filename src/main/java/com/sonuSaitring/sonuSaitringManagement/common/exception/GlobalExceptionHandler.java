@@ -38,6 +38,7 @@ public class GlobalExceptionHandler {
         private final Counter unauthorizedErrors;
         private final Counter notFoundErrors;
         private final Counter conflictErrors;
+        private final Counter tooManyRequestsErrors;
         private final Counter externalServiceErrors;
         private final Counter databaseErrors;
         private final Counter unexpectedErrors;
@@ -72,6 +73,12 @@ public class GlobalExceptionHandler {
                                 "application.errors")
                                 .tag("type", "conflict")
                                 .description("Number of conflict errors")
+                                .register(meterRegistry);
+
+                this.tooManyRequestsErrors = Counter.builder(
+                                "application.errors")
+                                .tag("type", "too_many_requests")
+                                .description("Number of rate limit and cooldown errors")
                                 .register(meterRegistry);
 
                 this.externalServiceErrors = Counter.builder(
@@ -316,6 +323,26 @@ public class GlobalExceptionHandler {
                                 null);
         }
 
+        @ExceptionHandler(TooManyRequestsException.class)
+        public ResponseEntity<ApiErrorResponse> handleTooManyRequests(
+                        TooManyRequestsException ex,
+                        HttpServletRequest request) {
+
+                tooManyRequestsErrors.increment();
+
+                logger.warn(
+                                "Too many requests: method={}, path={}, message={}",
+                                request.getMethod(),
+                                request.getRequestURI(),
+                                ex.getMessage());
+
+                return buildResponse(
+                                HttpStatus.TOO_MANY_REQUESTS,
+                                ex.getMessage(),
+                                request.getRequestURI(),
+                                null);
+        }
+
         @ExceptionHandler(UnauthorizedException.class)
         public ResponseEntity<ApiErrorResponse> handleUnauthorized(
                         UnauthorizedException ex,
@@ -437,6 +464,16 @@ public class GlobalExceptionHandler {
                                 null);
         }
 
+        /*
+         * ------------------------------------------------------------
+         * FALLBACK
+         * ------------------------------------------------------------
+         *
+         * This handler is intentionally kept.
+         *
+         * It catches genuinely unexpected programming/infrastructure
+         * failures that should not expose internal details to clients.
+         */
         @ExceptionHandler(Exception.class)
         public ResponseEntity<ApiErrorResponse> handleUnexpectedException(
                         Exception ex,

@@ -1,0 +1,2 @@
+-- V3 was previously applied with no schema changes.
+-- Profile changes are handled by V4.

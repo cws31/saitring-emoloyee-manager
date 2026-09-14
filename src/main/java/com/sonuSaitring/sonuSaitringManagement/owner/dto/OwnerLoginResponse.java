@@ -25,7 +25,9 @@ public class OwnerLoginResponse {
 
     private String organizationName;
 
-    private String username;
+    private String email;
+
+    private String mobileNumber;
 
     private String logoUrl;
 }

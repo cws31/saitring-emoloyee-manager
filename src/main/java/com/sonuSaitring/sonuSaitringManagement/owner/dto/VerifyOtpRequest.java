@@ -13,8 +13,8 @@ import lombok.Setter;
 @AllArgsConstructor
 public class VerifyOtpRequest {
 
-    @NotBlank(message = "Username is required.")
-    private String username;
+    @NotBlank(message = "Email or mobile number is required.")
+    private String identifier;
 
     @NotBlank(message = "OTP is required.")
     @Pattern(regexp = "^\\d{6}$", message = "OTP must contain exactly 6 digits.")

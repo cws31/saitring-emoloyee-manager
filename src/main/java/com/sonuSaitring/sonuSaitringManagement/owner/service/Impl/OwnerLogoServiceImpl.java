@@ -1,4 +1,4 @@
-package com.sonuSaitring.sonuSaitringManagement.owner.service;
+package com.sonuSaitring.sonuSaitringManagement.owner.service.Impl;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -17,6 +17,7 @@ import com.sonuSaitring.sonuSaitringManagement.common.exception.BadRequestExcept
 import com.sonuSaitring.sonuSaitringManagement.common.exception.ExternalServiceException;
 import com.sonuSaitring.sonuSaitringManagement.owner.entity.OwnerLogo;
 import com.sonuSaitring.sonuSaitringManagement.owner.repository.OwnerLogoRepository;
+import com.sonuSaitring.sonuSaitringManagement.owner.service.OwnerLogoService;
 
 @Service
 public class OwnerLogoServiceImpl implements OwnerLogoService {

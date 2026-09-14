@@ -19,7 +19,7 @@ public class OwnerRegistrationResponse {
 
     private String email;
 
-    private String username;
+    private String mobileNumber;
 
     private String logoUrl;
 }
