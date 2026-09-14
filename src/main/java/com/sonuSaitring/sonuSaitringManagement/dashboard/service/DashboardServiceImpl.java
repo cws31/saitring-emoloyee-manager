@@ -8,11 +8,11 @@ import com.sonuSaitring.sonuSaitringManagement.Hisab.repository.HisabRepository;
 import com.sonuSaitring.sonuSaitringManagement.advanceMoney.entity.EmployeeAdvance;
 import com.sonuSaitring.sonuSaitringManagement.advanceMoney.repository.EmployeeAdvanceRepository;
 import com.sonuSaitring.sonuSaitringManagement.dashboard.dto.DashboardResponse;
-import com.sonuSaitring.sonuSaitringManagement.dashboard.dto.EmployeeFinancialStatus;
 import com.sonuSaitring.sonuSaitringManagement.employee.entity.Employee;
 import com.sonuSaitring.sonuSaitringManagement.employee.repository.EmployeeRepository;
 import com.sonuSaitring.sonuSaitringManagement.sattlement.entity.EmployeeSettlement;
 import com.sonuSaitring.sonuSaitringManagement.sattlement.repository.EmployeeSettlementRepository;
+import com.sonuSaitring.sonuSaitringManagement.security.CurrentOwnerService;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,19 +36,22 @@ public class DashboardServiceImpl implements DashboardService {
         private final EmployeeAdvanceRepository advanceRepository;
         private final EmployeeSettlementRepository settlementRepository;
         private final HisabRepository hisabRepository;
+        private final CurrentOwnerService currentOwnerService;
 
         public DashboardServiceImpl(
                         EmployeeRepository employeeRepository,
                         AttendanceRepository attendanceRepository,
                         EmployeeAdvanceRepository advanceRepository,
                         EmployeeSettlementRepository settlementRepository,
-                        HisabRepository hisabRepository) {
+                        HisabRepository hisabRepository,
+                        CurrentOwnerService currentOwnerService) {
 
                 this.employeeRepository = employeeRepository;
                 this.attendanceRepository = attendanceRepository;
                 this.advanceRepository = advanceRepository;
                 this.settlementRepository = settlementRepository;
                 this.hisabRepository = hisabRepository;
+                this.currentOwnerService = currentOwnerService;
         }
 
         @Override
@@ -57,10 +59,11 @@ public class DashboardServiceImpl implements DashboardService {
 
                 validatePeriod(year, month);
 
-                LocalDate firstDayOfMonth = LocalDate.of(year, month, 1);
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-                LocalDate endDate = firstDayOfMonth.withDayOfMonth(
-                                firstDayOfMonth.lengthOfMonth());
+                LocalDate startDate = LocalDate.of(year, month, 1);
+
+                LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
 
                 LocalDate today = LocalDate.now();
 
@@ -70,27 +73,69 @@ public class DashboardServiceImpl implements DashboardService {
                         endDate = today;
                 }
 
-                List<Employee> employees = employeeRepository.findAll();
+                List<Employee> employees = employeeRepository.findAllByOwnerId(ownerId);
 
-                List<Employee> activeEmployees = employees.stream()
+                long totalActiveEmployees = employees.stream()
                                 .filter(employee -> !employee.isBlocked())
-                                .toList();
+                                .count();
 
-                long totalEmployees = activeEmployees.size();
-
-                List<EmployeeFinancialStatus> employeeStatus = buildEmployeeFinancialStatus(
-                                activeEmployees,
-                                year,
-                                month,
+                Map<Long, BigDecimal> earningsMap = calculateEarnings(
+                                ownerId,
+                                employees,
+                                startDate,
                                 endDate);
+
+                Map<Long, BigDecimal> advanceMap = calculateAdvances(
+                                ownerId,
+                                employees,
+                                startDate,
+                                endDate);
+
+                Map<Long, BigDecimal> paidMap = calculateSettlements(
+                                ownerId,
+                                employees,
+                                startDate,
+                                endDate);
+
+                Map<Long, BigDecimal> previousBalanceMap = getPreviousBalances(
+                                ownerId,
+                                year,
+                                month);
 
                 BigDecimal totalPayable = ZERO;
                 BigDecimal totalAdvance = ZERO;
                 BigDecimal totalOverAdvance = ZERO;
 
-                for (EmployeeFinancialStatus employee : employeeStatus) {
+                for (Employee employee : employees) {
 
-                        BigDecimal due = safe(employee.dueAmount());
+                        if (employee.isBlocked()) {
+                                continue;
+                        }
+
+                        Long employeeId = employee.getId();
+
+                        BigDecimal earnings = earningsMap.getOrDefault(
+                                        employeeId,
+                                        ZERO);
+
+                        BigDecimal advance = advanceMap.getOrDefault(
+                                        employeeId,
+                                        ZERO);
+
+                        BigDecimal previousBalance = previousBalanceMap.getOrDefault(
+                                        employeeId,
+                                        ZERO);
+
+                        BigDecimal amountPaid = paidMap.getOrDefault(
+                                        employeeId,
+                                        ZERO);
+
+                        BigDecimal payable = earnings
+                                        .subtract(advance)
+                                        .add(previousBalance);
+
+                        BigDecimal due = payable.subtract(amountPaid);
+
                         if (due.compareTo(ZERO) > 0) {
 
                                 totalPayable = totalPayable.add(due);
@@ -98,41 +143,29 @@ public class DashboardServiceImpl implements DashboardService {
 
                         if (due.compareTo(ZERO) < 0) {
 
-                                totalOverAdvance = totalOverAdvance.add(due);
+                                totalOverAdvance = totalOverAdvance.add(due.abs());
                         }
 
-                        
-                        totalAdvance = totalAdvance.add(
-                                        safe(employee.advanceAmount()));
+                        totalAdvance = totalAdvance.add(advance);
                 }
 
                 return new DashboardResponse(
-                                totalEmployees,
+                                totalActiveEmployees,
                                 money(totalPayable),
                                 money(totalAdvance),
-                                money(totalOverAdvance),
-                                employeeStatus);
+                                money(totalOverAdvance));
         }
 
-       
-
-        private List<EmployeeFinancialStatus> buildEmployeeFinancialStatus(
+        private Map<Long, BigDecimal> calculateEarnings(
+                        Long ownerId,
                         List<Employee> employees,
-                        int year,
-                        int month,
+                        LocalDate startDate,
                         LocalDate endDate) {
 
                 Map<Long, BigDecimal> earningsMap = new HashMap<>();
 
-                Map<Long, BigDecimal> advanceMap = new HashMap<>();
-
-                Map<Long, BigDecimal> paidMap = new HashMap<>();
-
-                LocalDate startDate = LocalDate.of(year, month, 1);
-
-               
-
-                List<Attendance> attendances = attendanceRepository.findAllByMonth(
+                List<Attendance> attendances = attendanceRepository.findAllByOwnerIdAndMonth(
+                                ownerId,
                                 startDate,
                                 endDate);
 
@@ -167,10 +200,22 @@ public class DashboardServiceImpl implements DashboardService {
                                         BigDecimal::add);
                 }
 
-               
-                List<EmployeeAdvance> advances = advanceRepository.findByPaymentDateBetween(
-                                startDate,
-                                endDate);
+                return earningsMap;
+        }
+
+        private Map<Long, BigDecimal> calculateAdvances(
+                        Long ownerId,
+                        List<Employee> employees,
+                        LocalDate startDate,
+                        LocalDate endDate) {
+
+                Map<Long, BigDecimal> advanceMap = new HashMap<>();
+
+                List<EmployeeAdvance> advances = advanceRepository
+                                .findByOwnerIdAndPaymentDateBetween(
+                                                ownerId,
+                                                startDate,
+                                                endDate);
 
                 for (EmployeeAdvance advance : advances) {
 
@@ -183,10 +228,10 @@ public class DashboardServiceImpl implements DashboardService {
                                 continue;
                         }
 
-                       
                         String note = advance.getNote() == null
                                         ? ""
-                                        : advance.getNote().toLowerCase();
+                                        : advance.getNote()
+                                                        .toLowerCase();
 
                         if (note.contains("carry-forward")
                                         || note.startsWith(
@@ -204,9 +249,20 @@ public class DashboardServiceImpl implements DashboardService {
                                         BigDecimal::add);
                 }
 
-             
+                return advanceMap;
+        }
+
+        private Map<Long, BigDecimal> calculateSettlements(
+                        Long ownerId,
+                        List<Employee> employees,
+                        LocalDate startDate,
+                        LocalDate endDate) {
+
+                Map<Long, BigDecimal> paidMap = new HashMap<>();
+
                 List<EmployeeSettlement> settlements = settlementRepository
-                                .findBySettlementDateBetween(
+                                .findByOwnerIdAndSettlementDateBetween(
+                                                ownerId,
                                                 startDate,
                                                 endDate);
 
@@ -227,63 +283,11 @@ public class DashboardServiceImpl implements DashboardService {
                                         BigDecimal::add);
                 }
 
-               
-
-                Map<Long, BigDecimal> previousBalances = getPreviousBalances(
-                                year,
-                                month);
-
-               
-                List<EmployeeFinancialStatus> result = new ArrayList<>();
-
-                for (Employee employee : employees) {
-
-                        Long employeeId = employee.getId();
-
-                        BigDecimal earnings = earningsMap.getOrDefault(
-                                        employeeId,
-                                        ZERO);
-
-                        BigDecimal advance = advanceMap.getOrDefault(
-                                        employeeId,
-                                        ZERO);
-
-                        BigDecimal previousBalance = previousBalances.getOrDefault(
-                                        employeeId,
-                                        ZERO);
-
-                        BigDecimal amountPaid = paidMap.getOrDefault(
-                                        employeeId,
-                                        ZERO);
-
-                     
-                        BigDecimal payable = earnings
-                                        .subtract(advance)
-                                        .add(previousBalance);
-
-                        
-                        BigDecimal due = payable.subtract(amountPaid);
-
-                        result.add(
-                                        new EmployeeFinancialStatus(
-                                                        employeeId,
-                                                        employee.getName(),
-                                                        money(payable),
-                                                        money(advance),
-                                                        money(amountPaid),
-                                                        money(due)));
-                }
-
-                result.sort(
-                                (a, b) -> a.employeeName()
-                                                .compareToIgnoreCase(
-                                                                b.employeeName()));
-
-                return result;
+                return paidMap;
         }
 
-      
         private Map<Long, BigDecimal> getPreviousBalances(
+                        Long ownerId,
                         int year,
                         int month) {
 
@@ -292,7 +296,8 @@ public class DashboardServiceImpl implements DashboardService {
                 LocalDate previous = current.minusMonths(1);
 
                 Hisab previousHisab = hisabRepository
-                                .findByYearAndMonth(
+                                .findByOwnerIdAndYearAndMonth(
+                                                ownerId,
                                                 previous.getYear(),
                                                 previous.getMonthValue())
                                 .orElse(null);
@@ -323,7 +328,6 @@ public class DashboardServiceImpl implements DashboardService {
 
                 return balances;
         }
-
 
         private static BigDecimal safe(
                         BigDecimal value) {

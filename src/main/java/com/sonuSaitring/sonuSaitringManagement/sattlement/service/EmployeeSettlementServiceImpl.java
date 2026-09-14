@@ -3,14 +3,18 @@ package com.sonuSaitring.sonuSaitringManagement.sattlement.service;
 import com.sonuSaitring.sonuSaitringManagement.common.exception.ResourceNotFoundException;
 import com.sonuSaitring.sonuSaitringManagement.employee.entity.Employee;
 import com.sonuSaitring.sonuSaitringManagement.employee.repository.EmployeeRepository;
+import com.sonuSaitring.sonuSaitringManagement.owner.entity.Owner;
 import com.sonuSaitring.sonuSaitringManagement.sattlement.dto.EmployeeSettlementDTO;
+import com.sonuSaitring.sonuSaitringManagement.sattlement.dto.SettlementResponseDTO;
 import com.sonuSaitring.sonuSaitringManagement.sattlement.entity.EmployeeSettlement;
 import com.sonuSaitring.sonuSaitringManagement.sattlement.repository.EmployeeSettlementRepository;
+import com.sonuSaitring.sonuSaitringManagement.security.CurrentOwnerService;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -18,156 +22,249 @@ import java.util.List;
 
 @Service
 public class EmployeeSettlementServiceImpl
-        implements EmployeeSettlementService {
+                implements EmployeeSettlementService {
 
-    private static final Logger logger = LoggerFactory.getLogger(EmployeeSettlementServiceImpl.class);
+        private static final Logger logger = LoggerFactory.getLogger(EmployeeSettlementServiceImpl.class);
 
-    @Autowired
-    private EmployeeSettlementRepository settlementRepository;
+        @Autowired
+        private EmployeeSettlementRepository settlementRepository;
 
-    @Autowired
-    private EmployeeRepository employeeRepository;
+        @Autowired
+        private EmployeeRepository employeeRepository;
 
-    @Override
-    public EmployeeSettlement saveSettlement(
-            EmployeeSettlementDTO dto) {
+        @Autowired
+        private CurrentOwnerService currentOwnerService;
 
-        logger.info(
-                "Recording payment settlement of amount {} for employeeId: {}",
-                dto.getAmountPaid(),
-                dto.getEmployeeId());
+        @Override
+        @Transactional
+        public SettlementResponseDTO saveSettlement(
+                        EmployeeSettlementDTO dto) {
 
-        Employee employee = employeeRepository.findById(dto.getEmployeeId())
-                .orElseThrow(() -> {
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-                    logger.warn(
-                            "Failed to save settlement: Employee not found with id: {}",
-                            dto.getEmployeeId());
+                Owner owner = currentOwnerService.getCurrentOwner();
 
-                    return new ResourceNotFoundException(
-                            "Employee not found with id: "
-                                    + dto.getEmployeeId());
-                });
+                logger.info(
+                                "Recording payment settlement of amount {} for employeeId: {} and ownerId: {}",
+                                dto.getAmountPaid(),
+                                dto.getEmployeeId(),
+                                ownerId);
 
-        EmployeeSettlement settlement = new EmployeeSettlement();
+                Employee employee = employeeRepository
+                                .findByIdAndOwnerId(
+                                                dto.getEmployeeId(),
+                                                ownerId)
+                                .orElseThrow(() -> {
 
-        settlement.setEmployee(employee);
+                                        logger.warn(
+                                                        "Failed to save settlement: Employee not found with id: {} for ownerId: {}",
+                                                        dto.getEmployeeId(),
+                                                        ownerId);
 
-        settlement.setAmountPaid(
-                dto.getAmountPaid());
+                                        return new ResourceNotFoundException(
+                                                        "Employee not found with id: "
+                                                                        + dto.getEmployeeId());
+                                });
 
-        settlement.setSettlementDate(
-                dto.getSettlementDate() != null
-                        ? dto.getSettlementDate()
-                        : LocalDate.now());
+                EmployeeSettlement settlement = new EmployeeSettlement();
 
-        settlement.setNote(
-                dto.getNote());
+                settlement.setEmployee(employee);
+                settlement.setOwner(owner);
 
-        settlement.setCreatedAt(
-                LocalDateTime.now());
+                settlement.setAmountPaid(
+                                dto.getAmountPaid());
 
-        EmployeeSettlement savedSettlement = settlementRepository.save(
-                settlement);
+                settlement.setSettlementDate(
+                                dto.getSettlementDate() != null
+                                                ? dto.getSettlementDate()
+                                                : LocalDate.now());
 
-        logger.info(
-                "Successfully saved settlement record ID: {}",
-                savedSettlement.getId());
+                settlement.setNote(
+                                dto.getNote());
 
-        return savedSettlement;
-    }
+                settlement.setCreatedAt(
+                                LocalDateTime.now());
 
-    @Override
-    public EmployeeSettlement updateSettlement(
-            Long id,
-            EmployeeSettlementDTO dto) {
+                EmployeeSettlement savedSettlement = settlementRepository.save(settlement);
 
-        logger.info(
-                "Updating settlement record ID: {}",
-                id);
+                logger.info(
+                                "Successfully saved settlement record ID: {} for ownerId: {}",
+                                savedSettlement.getId(),
+                                ownerId);
 
-        EmployeeSettlement settlement = settlementRepository.findById(id)
-                .orElseThrow(() -> {
-
-                    logger.warn(
-                            "Settlement record not found with id: {}",
-                            id);
-
-                    return new ResourceNotFoundException(
-                            "Settlement record not found with id: "
-                                    + id);
-                });
-
-        if (dto.getAmountPaid() != null) {
-            settlement.setAmountPaid(
-                    dto.getAmountPaid());
+                return mapToResponse(savedSettlement);
         }
 
-        if (dto.getSettlementDate() != null) {
-            settlement.setSettlementDate(
-                    dto.getSettlementDate());
+        @Override
+        @Transactional
+        public SettlementResponseDTO updateSettlement(
+                        Long id,
+                        EmployeeSettlementDTO dto) {
+
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
+
+                logger.info(
+                                "Updating settlement record ID: {} for ownerId: {}",
+                                id,
+                                ownerId);
+
+                EmployeeSettlement settlement = settlementRepository
+                                .findByIdAndOwnerId(
+                                                id,
+                                                ownerId)
+                                .orElseThrow(() -> {
+
+                                        logger.warn(
+                                                        "Settlement record not found with id: {} for ownerId: {}",
+                                                        id,
+                                                        ownerId);
+
+                                        return new ResourceNotFoundException(
+                                                        "Settlement record not found with id: "
+                                                                        + id);
+                                });
+
+                if (dto.getEmployeeId() != null) {
+
+                        Employee employee = employeeRepository
+                                        .findByIdAndOwnerId(
+                                                        dto.getEmployeeId(),
+                                                        ownerId)
+                                        .orElseThrow(() -> new ResourceNotFoundException(
+                                                        "Employee not found with id: "
+                                                                        + dto.getEmployeeId()));
+
+                        settlement.setEmployee(employee);
+                }
+
+                if (dto.getAmountPaid() != null) {
+
+                        settlement.setAmountPaid(
+                                        dto.getAmountPaid());
+                }
+
+                if (dto.getSettlementDate() != null) {
+
+                        settlement.setSettlementDate(
+                                        dto.getSettlementDate());
+                }
+
+                if (dto.getNote() != null) {
+
+                        settlement.setNote(
+                                        dto.getNote());
+                }
+
+                EmployeeSettlement updatedSettlement = settlementRepository.save(settlement);
+
+                logger.info(
+                                "Successfully updated settlement record ID: {} for ownerId: {}",
+                                id,
+                                ownerId);
+
+                return mapToResponse(updatedSettlement);
         }
 
-        if (dto.getNote() != null) {
-            settlement.setNote(
-                    dto.getNote());
+        @Override
+        @Transactional
+        public void deleteSettlement(Long id) {
+
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
+
+                logger.info(
+                                "Deleting settlement record ID: {} for ownerId: {}",
+                                id,
+                                ownerId);
+
+                if (!settlementRepository.existsByIdAndOwnerId(
+                                id,
+                                ownerId)) {
+
+                        logger.warn(
+                                        "Settlement record not found with id: {} for ownerId: {}",
+                                        id,
+                                        ownerId);
+
+                        throw new ResourceNotFoundException(
+                                        "Settlement record not found with id: "
+                                                        + id);
+                }
+
+                settlementRepository.deleteByIdAndOwnerId(
+                                id,
+                                ownerId);
+
+                logger.info(
+                                "Successfully deleted settlement record ID: {} for ownerId: {}",
+                                id,
+                                ownerId);
         }
 
-        EmployeeSettlement updatedSettlement = settlementRepository.save(
-                settlement);
+        @Override
+        @Transactional(readOnly = true)
+        public List<SettlementResponseDTO> getAllSettlements() {
 
-        logger.info(
-                "Successfully updated settlement record ID: {}",
-                id);
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-        return updatedSettlement;
-    }
+                logger.info(
+                                "Fetching all employee settlement records for ownerId: {}",
+                                ownerId);
 
-    @Override
-    public void deleteSettlement(Long id) {
+                return settlementRepository
+                                .findByOwnerId(ownerId)
+                                .stream()
+                                .map(this::mapToResponse)
+                                .toList();
+        }
 
-        logger.info(
-                "Deleting settlement record ID: {}",
-                id);
+        @Override
+        @Transactional(readOnly = true)
+        public List<SettlementResponseDTO> getSettlementsByEmployee(
+                        Long employeeId) {
 
-        EmployeeSettlement settlement = settlementRepository.findById(id)
-                .orElseThrow(() -> {
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-                    logger.warn(
-                            "Settlement record not found with id: {}",
-                            id);
+                logger.info(
+                                "Fetching settlements for employeeId: {} and ownerId: {}",
+                                employeeId,
+                                ownerId);
 
-                    return new ResourceNotFoundException(
-                            "Settlement record not found with id: "
-                                    + id);
-                });
+                employeeRepository
+                                .findByIdAndOwnerId(
+                                                employeeId,
+                                                ownerId)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Employee not found with id: "
+                                                                + employeeId));
 
-        settlementRepository.delete(
-                settlement);
+                return settlementRepository
+                                .findByOwnerIdAndEmployeeId(
+                                                ownerId,
+                                                employeeId)
+                                .stream()
+                                .map(this::mapToResponse)
+                                .toList();
+        }
 
-        logger.info(
-                "Successfully deleted settlement record ID: {}",
-                id);
-    }
+        private SettlementResponseDTO mapToResponse(
+                        EmployeeSettlement settlement) {
 
-    @Override
-    public List<EmployeeSettlement> getAllSettlements() {
+                Employee employee = settlement.getEmployee();
 
-        logger.info(
-                "Fetching all employee settlement records.");
-
-        return settlementRepository.findAll();
-    }
-
-    @Override
-    public List<EmployeeSettlement> getSettlementsByEmployee(
-            Long employeeId) {
-
-        logger.info(
-                "Fetching settlements for employeeId: {}",
-                employeeId);
-
-        return settlementRepository.findByEmployeeId(
-                employeeId);
-    }
+                return new SettlementResponseDTO(
+                                settlement.getId(),
+                                employee != null
+                                                ? employee.getId()
+                                                : null,
+                                employee != null
+                                                ? employee.getName()
+                                                : null,
+                                employee != null
+                                                ? employee.getMobile()
+                                                : null,
+                                settlement.getAmountPaid(),
+                                settlement.getSettlementDate(),
+                                settlement.getNote(),
+                                settlement.getCreatedAt());
+        }
 }

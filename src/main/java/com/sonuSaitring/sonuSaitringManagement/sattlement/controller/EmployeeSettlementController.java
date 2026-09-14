@@ -1,12 +1,12 @@
 package com.sonuSaitring.sonuSaitringManagement.sattlement.controller;
 
+import com.sonuSaitring.sonuSaitringManagement.sattlement.dto.EmployeeSettlementDTO;
+import com.sonuSaitring.sonuSaitringManagement.sattlement.dto.SettlementResponseDTO;
+import com.sonuSaitring.sonuSaitringManagement.sattlement.service.EmployeeSettlementServiceImpl;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import com.sonuSaitring.sonuSaitringManagement.sattlement.dto.EmployeeSettlementDTO;
-import com.sonuSaitring.sonuSaitringManagement.sattlement.entity.EmployeeSettlement;
-import com.sonuSaitring.sonuSaitringManagement.sattlement.service.EmployeeSettlementServiceImpl;
 
 import java.util.List;
 
@@ -18,29 +18,43 @@ public class EmployeeSettlementController {
     private EmployeeSettlementServiceImpl settlementService;
 
     @PostMapping
-    public ResponseEntity<EmployeeSettlement> createSettlement(@RequestBody EmployeeSettlementDTO dto) {
-        return ResponseEntity.ok(settlementService.saveSettlement(dto));
+    public ResponseEntity<SettlementResponseDTO> createSettlement(
+            @RequestBody EmployeeSettlementDTO dto) {
+
+        return ResponseEntity.ok(
+                settlementService.saveSettlement(dto));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<EmployeeSettlement> updateSettlement(@PathVariable Long id,
+    public ResponseEntity<SettlementResponseDTO> updateSettlement(
+            @PathVariable Long id,
             @RequestBody EmployeeSettlementDTO dto) {
-        return ResponseEntity.ok(settlementService.updateSettlement(id, dto));
+
+        return ResponseEntity.ok(
+                settlementService.updateSettlement(id, dto));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteSettlement(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteSettlement(
+            @PathVariable Long id) {
+
         settlementService.deleteSettlement(id);
-        return ResponseEntity.ok().build();
+
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping
-    public ResponseEntity<List<EmployeeSettlement>> getAllSettlements() {
-        return ResponseEntity.ok(settlementService.getAllSettlements());
+    public ResponseEntity<List<SettlementResponseDTO>> getAllSettlements() {
+
+        return ResponseEntity.ok(
+                settlementService.getAllSettlements());
     }
 
     @GetMapping("/employee/{employeeId}")
-    public ResponseEntity<List<EmployeeSettlement>> getSettlementsByEmployee(@PathVariable Long employeeId) {
-        return ResponseEntity.ok(settlementService.getSettlementsByEmployee(employeeId));
+    public ResponseEntity<List<SettlementResponseDTO>> getSettlementsByEmployee(
+            @PathVariable Long employeeId) {
+
+        return ResponseEntity.ok(
+                settlementService.getSettlementsByEmployee(employeeId));
     }
 }

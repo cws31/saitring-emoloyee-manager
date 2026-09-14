@@ -1,17 +1,31 @@
 package com.sonuSaitring.sonuSaitringManagement.employee.repository;
 
-
-
-
+import com.sonuSaitring.sonuSaitringManagement.employee.entity.Employee;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import com.sonuSaitring.sonuSaitringManagement.employee.entity.Employee;
-
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface EmployeeRepository extends JpaRepository<Employee, Long> {
-    Optional<Employee> findByMobile(String mobile);
-    boolean existsByMobile(String mobile);
+
+    boolean existsByOwnerIdAndMobile(
+            Long ownerId,
+            String mobile);
+
+    Optional<Employee> findByIdAndOwnerId(
+            Long id,
+            Long ownerId);
+
+    Optional<Employee> findByMobileAndOwnerId(
+            String mobile,
+            Long ownerId);
+
+    List<Employee> findAllByOwnerId(
+            Long ownerId);
+
+    void deleteByIdAndOwnerId(
+            Long id,
+            Long ownerId);
 }

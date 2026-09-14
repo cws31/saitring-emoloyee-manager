@@ -1,5 +1,6 @@
 package com.sonuSaitring.sonuSaitringManagement.Hisab.entity;
 
+import com.sonuSaitring.sonuSaitringManagement.owner.entity.Owner;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -11,7 +12,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "month_closings")
+@Table(name = "month_closings", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_month_closing_owner_year_month", columnNames = { "owner_id", "year", "month" })
+}, indexes = {
+        @Index(name = "idx_month_closing_owner_id", columnList = "owner_id")
+})
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -35,6 +40,10 @@ public class Hisab {
 
     @Column(name = "total_over_advance", precision = 38, scale = 2, nullable = false)
     private BigDecimal totalOverAdvance = BigDecimal.ZERO;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private Owner owner;
 
     @OneToMany(mappedBy = "monthClosing", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<HisabDetail> details = new ArrayList<>();

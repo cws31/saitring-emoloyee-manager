@@ -7,13 +7,17 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
 import com.sonuSaitring.sonuSaitringManagement.employee.entity.Employee;
+import com.sonuSaitring.sonuSaitringManagement.owner.entity.Owner;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "attendances", uniqueConstraints = {
-        @UniqueConstraint(columnNames = { "employee_id", "attendance_date" })
+        @UniqueConstraint(name = "uk_attendance_owner_employee_date", columnNames = { "owner_id", "employee_id",
+                "attendance_date" })
+}, indexes = {
+        @Index(name = "idx_attendance_owner_id", columnList = "owner_id")
 })
 @Data
 @NoArgsConstructor
@@ -24,9 +28,13 @@ public class Attendance {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "employee_id", nullable = false)
     private Employee employee;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private Owner owner;
 
     @Column(name = "attendance_date", nullable = false)
     private LocalDate attendanceDate;

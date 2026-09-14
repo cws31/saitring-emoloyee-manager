@@ -5,10 +5,10 @@ import com.sonuSaitring.sonuSaitringManagement.common.exception.ResourceNotFound
 import com.sonuSaitring.sonuSaitringManagement.employee.dto.EmployeeRequestDTO;
 import com.sonuSaitring.sonuSaitringManagement.employee.entity.Employee;
 import com.sonuSaitring.sonuSaitringManagement.employee.repository.EmployeeRepository;
+import com.sonuSaitring.sonuSaitringManagement.security.CurrentOwnerService;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -17,174 +17,241 @@ import java.util.List;
 @Service
 public class EmployeeServiceImpl implements EmployeeService {
 
-    private static final Logger logger = LoggerFactory.getLogger(EmployeeServiceImpl.class);
+        private static final Logger logger = LoggerFactory.getLogger(EmployeeServiceImpl.class);
 
-    @Autowired
-    private EmployeeRepository employeeRepository;
+        private final EmployeeRepository employeeRepository;
+        private final CurrentOwnerService currentOwnerService;
 
-    @Override
-    public Employee addEmployee(EmployeeRequestDTO requestDTO) {
+        public EmployeeServiceImpl(
+                        EmployeeRepository employeeRepository,
+                        CurrentOwnerService currentOwnerService) {
 
-        logger.info(
-                "Attempting to add new employee with mobile: {}",
-                requestDTO.getMobile());
-
-        if (employeeRepository.existsByMobile(requestDTO.getMobile())) {
-
-            logger.warn(
-                    "Failed to add employee: mobile number already exists.");
-
-            throw new ConflictException(
-                    "Employee with this mobile number already exists.");
+                this.employeeRepository = employeeRepository;
+                this.currentOwnerService = currentOwnerService;
         }
 
-        Employee employee = new Employee();
+        @Override
+        public Employee addEmployee(
+                        EmployeeRequestDTO requestDTO) {
 
-        employee.setName(requestDTO.getName());
-        employee.setMobile(requestDTO.getMobile());
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-        if (requestDTO.getInitialRate() != null) {
-            employee.setInitialRate(requestDTO.getInitialRate());
-        } else {
-            employee.setInitialRate(BigDecimal.ZERO);
+                logger.info(
+                                "Attempting to add employee for owner: {} with mobile: {}",
+                                ownerId,
+                                requestDTO.getMobile());
+
+                if (employeeRepository.existsByOwnerIdAndMobile(
+                                ownerId,
+                                requestDTO.getMobile())) {
+
+                        logger.warn(
+                                        "Failed to add employee: mobile already exists for owner {}",
+                                        ownerId);
+
+                        throw new ConflictException(
+                                        "Employee with this mobile number already exists.");
+                }
+
+                Employee employee = new Employee();
+
+                employee.setName(
+                                requestDTO.getName());
+
+                employee.setMobile(
+                                requestDTO.getMobile());
+
+                if (requestDTO.getInitialRate() != null) {
+
+                        employee.setInitialRate(
+                                        requestDTO.getInitialRate());
+
+                } else {
+
+                        employee.setInitialRate(
+                                        BigDecimal.ZERO);
+                }
+
+                employee.setBlocked(false);
+
+                employee.setOwner(
+                                currentOwnerService.getCurrentOwner());
+
+                Employee savedEmployee = employeeRepository.save(employee);
+
+                logger.info(
+                                "Successfully added employee ID: {} for owner: {}",
+                                savedEmployee.getId(),
+                                ownerId);
+
+                return savedEmployee;
         }
 
-        employee.setBlocked(false);
+        @Override
+        public Employee updateEmployee(
+                        Long id,
+                        EmployeeRequestDTO requestDTO) {
 
-        Employee savedEmployee = employeeRepository.save(employee);
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-        logger.info(
-                "Successfully added employee with ID: {}",
-                savedEmployee.getId());
+                logger.info(
+                                "Attempting to update employee ID: {} for owner: {}",
+                                id,
+                                ownerId);
 
-        return savedEmployee;
-    }
+                Employee employee = employeeRepository
+                                .findByIdAndOwnerId(id, ownerId)
+                                .orElseThrow(() -> {
 
-    @Override
-    public Employee updateEmployee(
-            Long id,
-            EmployeeRequestDTO requestDTO) {
+                                        logger.warn(
+                                                        "Employee {} not found for owner {}",
+                                                        id,
+                                                        ownerId);
 
-        logger.info(
-                "Attempting to update employee ID: {}",
-                id);
+                                        return new ResourceNotFoundException(
+                                                        "Employee not found with id: " + id);
+                                });
 
-        Employee employee = employeeRepository.findById(id)
-                .orElseThrow(() -> {
+                if (!employee.getMobile().equals(
+                                requestDTO.getMobile())
+                                && employeeRepository
+                                                .existsByOwnerIdAndMobile(
+                                                                ownerId,
+                                                                requestDTO.getMobile())) {
 
-                    logger.warn(
-                            "Employee not found with id: {} during update",
-                            id);
+                        logger.warn(
+                                        "Mobile {} already belongs to another employee of owner {}",
+                                        requestDTO.getMobile(),
+                                        ownerId);
 
-                    return new ResourceNotFoundException(
-                            "Employee not found with id: " + id);
-                });
+                        throw new ConflictException(
+                                        "Mobile number already in use by another employee.");
+                }
 
-        if (!employee.getMobile().equals(requestDTO.getMobile())
-                && employeeRepository.existsByMobile(requestDTO.getMobile())) {
+                employee.setName(
+                                requestDTO.getName());
 
-            logger.warn(
-                    "Failed to update employee ID {}: mobile number already in use",
-                    id);
+                employee.setMobile(
+                                requestDTO.getMobile());
 
-            throw new ConflictException(
-                    "Mobile number already in use by another employee.");
+                if (requestDTO.getInitialRate() != null) {
+
+                        employee.setInitialRate(
+                                        requestDTO.getInitialRate());
+                }
+
+                Employee updatedEmployee = employeeRepository.save(employee);
+
+                logger.info(
+                                "Successfully updated employee ID: {} for owner: {}",
+                                id,
+                                ownerId);
+
+                return updatedEmployee;
         }
 
-        employee.setName(requestDTO.getName());
-        employee.setMobile(requestDTO.getMobile());
+        @Override
+        public void deleteEmployee(Long id) {
 
-        if (requestDTO.getInitialRate() != null) {
-            employee.setInitialRate(requestDTO.getInitialRate());
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
+
+                logger.info(
+                                "Attempting to delete employee ID: {} for owner: {}",
+                                id,
+                                ownerId);
+
+                Employee employee = employeeRepository
+                                .findByIdAndOwnerId(id, ownerId)
+                                .orElseThrow(() -> {
+
+                                        logger.warn(
+                                                        "Employee {} not found for owner {}",
+                                                        id,
+                                                        ownerId);
+
+                                        return new ResourceNotFoundException(
+                                                        "Employee not found with id: " + id);
+                                });
+
+                employeeRepository.delete(employee);
+
+                logger.info(
+                                "Successfully deleted employee ID: {} for owner: {}",
+                                id,
+                                ownerId);
         }
 
-        Employee updatedEmployee = employeeRepository.save(employee);
+        @Override
+        public Employee toggleBlockStatus(Long id) {
 
-        logger.info(
-                "Successfully updated employee ID: {}",
-                id);
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-        return updatedEmployee;
-    }
+                logger.info(
+                                "Toggling block status for employee ID: {} for owner: {}",
+                                id,
+                                ownerId);
 
-    @Override
-    public void deleteEmployee(Long id) {
+                Employee employee = employeeRepository
+                                .findByIdAndOwnerId(id, ownerId)
+                                .orElseThrow(() -> {
 
-        logger.info(
-                "Attempting to delete employee ID: {}",
-                id);
+                                        logger.warn(
+                                                        "Employee {} not found for owner {}",
+                                                        id,
+                                                        ownerId);
 
-        if (!employeeRepository.existsById(id)) {
+                                        return new ResourceNotFoundException(
+                                                        "Employee not found with id: " + id);
+                                });
 
-            logger.warn(
-                    "Failed to delete employee. Employee not found with id: {}",
-                    id);
+                employee.setBlocked(
+                                !employee.isBlocked());
 
-            throw new ResourceNotFoundException(
-                    "Employee not found with id: " + id);
+                Employee savedEmployee = employeeRepository.save(employee);
+
+                logger.info(
+                                "Employee ID {} block status changed to {} for owner {}",
+                                id,
+                                savedEmployee.isBlocked(),
+                                ownerId);
+
+                return savedEmployee;
         }
 
-        employeeRepository.deleteById(id);
+        @Override
+        public List<Employee> getAllEmployees() {
 
-        logger.info(
-                "Successfully deleted employee ID: {}",
-                id);
-    }
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-    @Override
-    public Employee toggleBlockStatus(Long id) {
+                logger.info(
+                                "Fetching employees for owner: {}",
+                                ownerId);
 
-        logger.info(
-                "Toggling block status for employee ID: {}",
-                id);
+                return employeeRepository
+                                .findAllByOwnerId(ownerId);
+        }
 
-        Employee employee = employeeRepository.findById(id)
-                .orElseThrow(() -> {
+        @Override
+        public Employee getEmployeeById(Long id) {
 
-                    logger.warn(
-                            "Employee not found with id: {} during block status toggle",
-                            id);
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-                    return new ResourceNotFoundException(
-                            "Employee not found with id: " + id);
-                });
+                logger.info(
+                                "Fetching employee ID: {} for owner: {}",
+                                id,
+                                ownerId);
 
-        employee.setBlocked(!employee.isBlocked());
+                return employeeRepository
+                                .findByIdAndOwnerId(id, ownerId)
+                                .orElseThrow(() -> {
 
-        Employee savedEmployee = employeeRepository.save(employee);
+                                        logger.warn(
+                                                        "Employee {} not found for owner {}",
+                                                        id,
+                                                        ownerId);
 
-        logger.info(
-                "Employee ID {} block status changed to: {}",
-                id,
-                savedEmployee.isBlocked());
-
-        return savedEmployee;
-    }
-
-    @Override
-    public List<Employee> getAllEmployees() {
-
-        logger.info("Fetching list of all employees.");
-
-        return employeeRepository.findAll();
-    }
-
-    @Override
-    public Employee getEmployeeById(Long id) {
-
-        logger.info(
-                "Fetching employee details for ID: {}",
-                id);
-
-        return employeeRepository.findById(id)
-                .orElseThrow(() -> {
-
-                    logger.warn(
-                            "Employee not found with id: {}",
-                            id);
-
-                    return new ResourceNotFoundException(
-                            "Employee not found with id: " + id);
-                });
-    }
+                                        return new ResourceNotFoundException(
+                                                        "Employee not found with id: " + id);
+                                });
+        }
 }

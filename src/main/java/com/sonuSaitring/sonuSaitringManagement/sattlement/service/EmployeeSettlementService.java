@@ -1,22 +1,23 @@
 package com.sonuSaitring.sonuSaitringManagement.sattlement.service;
 
-import java.util.List;
-
 import com.sonuSaitring.sonuSaitringManagement.sattlement.dto.EmployeeSettlementDTO;
-import com.sonuSaitring.sonuSaitringManagement.sattlement.entity.EmployeeSettlement;
+import com.sonuSaitring.sonuSaitringManagement.sattlement.dto.SettlementResponseDTO;
+
+import java.util.List;
 
 public interface EmployeeSettlementService {
 
-    EmployeeSettlement saveSettlement(EmployeeSettlementDTO dto);
+        SettlementResponseDTO saveSettlement(
+                        EmployeeSettlementDTO dto);
 
-    EmployeeSettlement updateSettlement(
-            Long id,
-            EmployeeSettlementDTO dto);
+        SettlementResponseDTO updateSettlement(
+                        Long id,
+                        EmployeeSettlementDTO dto);
 
-    void deleteSettlement(Long id);
+        void deleteSettlement(Long id);
 
-    List<EmployeeSettlement> getAllSettlements();
+        List<SettlementResponseDTO> getAllSettlements();
 
-    List<EmployeeSettlement> getSettlementsByEmployee(
-            Long employeeId);
+        List<SettlementResponseDTO> getSettlementsByEmployee(
+                        Long employeeId);
 }

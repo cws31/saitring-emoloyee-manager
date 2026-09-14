@@ -7,11 +7,32 @@ import com.sonuSaitring.sonuSaitringManagement.advanceMoney.entity.EmployeeAdvan
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
-public interface EmployeeAdvanceRepository extends JpaRepository<EmployeeAdvance, Long> {
-    List<EmployeeAdvance> findByPaymentDateBetween(LocalDate startDate, LocalDate endDate);
+public interface EmployeeAdvanceRepository
+        extends JpaRepository<EmployeeAdvance, Long> {
 
-    List<EmployeeAdvance> findByEmployeeIdAndPaymentDateBetween(Long employeeId, LocalDate startDate,
+    List<EmployeeAdvance> findByOwnerIdAndPaymentDateBetween(
+            Long ownerId,
+            LocalDate startDate,
             LocalDate endDate);
+
+    List<EmployeeAdvance> findByOwnerIdAndEmployeeIdAndPaymentDateBetween(
+            Long ownerId,
+            Long employeeId,
+            LocalDate startDate,
+            LocalDate endDate);
+
+    Optional<EmployeeAdvance> findByIdAndOwnerId(
+            Long id,
+            Long ownerId);
+
+    boolean existsByIdAndOwnerId(
+            Long id,
+            Long ownerId);
+
+    void deleteByIdAndOwnerId(
+            Long id,
+            Long ownerId);
 }

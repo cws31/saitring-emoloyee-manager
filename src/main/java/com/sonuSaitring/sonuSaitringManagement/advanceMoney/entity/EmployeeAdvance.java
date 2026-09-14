@@ -1,21 +1,39 @@
 package com.sonuSaitring.sonuSaitringManagement.advanceMoney.entity;
 
+import jakarta.annotation.Generated;
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 import java.time.LocalDate;
 
 import com.sonuSaitring.sonuSaitringManagement.employee.entity.Employee;
+import com.sonuSaitring.sonuSaitringManagement.owner.entity.Owner;
 
+@Setter
+@Getter
+@AllArgsConstructor
+@NoArgsConstructor
 @Entity
-@Table(name = "employee_advances")
+@Table(name = "employee_advances", indexes = {
+        @Index(name = "idx_advance_owner_id", columnList = "owner_id"),
+        @Index(name = "idx_advance_owner_payment_date", columnList = "owner_id, payment_date")
+})
 public class EmployeeAdvance {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "employee_id", nullable = false)
     private Employee employee;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private Owner owner;
 
     @Column(nullable = false)
     private Double amount;
@@ -25,44 +43,4 @@ public class EmployeeAdvance {
 
     private String note;
 
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public Employee getEmployee() {
-        return employee;
-    }
-
-    public void setEmployee(Employee employee) {
-        this.employee = employee;
-    }
-
-    public Double getAmount() {
-        return amount;
-    }
-
-    public void setAmount(Double amount) {
-        this.amount = amount;
-    }
-
-    public LocalDate getPaymentDate() {
-        return paymentDate;
-    }
-
-    public void setPaymentDate(LocalDate paymentDate) {
-        this.paymentDate = paymentDate;
-    }
-
-    public String getNote() {
-        return note;
-    }
-
-    public void setNote(String note) {
-        this.note = note;
-    }
 }

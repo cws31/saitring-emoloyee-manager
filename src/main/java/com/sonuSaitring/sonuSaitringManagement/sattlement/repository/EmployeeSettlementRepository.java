@@ -1,5 +1,3 @@
-
-
 package com.sonuSaitring.sonuSaitringManagement.sattlement.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -9,9 +7,32 @@ import com.sonuSaitring.sonuSaitringManagement.sattlement.entity.EmployeeSettlem
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
-public interface EmployeeSettlementRepository extends JpaRepository<EmployeeSettlement, Long> {
-    List<EmployeeSettlement> findByEmployeeId(Long employeeId);
-    List<EmployeeSettlement> findBySettlementDateBetween(LocalDate startDate, LocalDate endDate);
+public interface EmployeeSettlementRepository
+        extends JpaRepository<EmployeeSettlement, Long> {
+
+    List<EmployeeSettlement> findByOwnerId(Long ownerId);
+
+    List<EmployeeSettlement> findByOwnerIdAndEmployeeId(
+            Long ownerId,
+            Long employeeId);
+
+    List<EmployeeSettlement> findByOwnerIdAndSettlementDateBetween(
+            Long ownerId,
+            LocalDate startDate,
+            LocalDate endDate);
+
+    Optional<EmployeeSettlement> findByIdAndOwnerId(
+            Long id,
+            Long ownerId);
+
+    boolean existsByIdAndOwnerId(
+            Long id,
+            Long ownerId);
+
+    void deleteByIdAndOwnerId(
+            Long id,
+            Long ownerId);
 }

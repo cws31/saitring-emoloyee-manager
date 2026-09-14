@@ -12,6 +12,7 @@ import com.sonuSaitring.sonuSaitringManagement.Attendance.entity.Attendance;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.repository.AttendanceRepository;
 import com.sonuSaitring.sonuSaitringManagement.employee.entity.Employee;
 import com.sonuSaitring.sonuSaitringManagement.employee.repository.EmployeeRepository;
+import com.sonuSaitring.sonuSaitringManagement.security.CurrentOwnerService;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -30,61 +31,106 @@ public class AttendanceServiceImpl implements AttendanceService {
     @Autowired
     private EmployeeRepository employeeRepository;
 
+    @Autowired
+    private CurrentOwnerService currentOwnerService;
+
     @Override
     public AttendanceResponseDTO markAttendance(AttendanceRequestDTO requestDTO) {
-        logger.info("Marking attendance for employeeId: {} on date: {}", requestDTO.getEmployeeId(),
+
+        Long ownerId = currentOwnerService.getCurrentOwnerId();
+
+        logger.info(
+                "Marking attendance for ownerId: {}, employeeId: {}, date: {}",
+                ownerId,
+                requestDTO.getEmployeeId(),
                 requestDTO.getAttendanceDate());
 
-        Employee employee = employeeRepository.findById(requestDTO.getEmployeeId())
+        Employee employee = employeeRepository
+                .findByIdAndOwnerId(requestDTO.getEmployeeId(), ownerId)
                 .orElseThrow(() -> {
-                    logger.error("Failed to mark attendance: Employee not found with id: {}",
-                            requestDTO.getEmployeeId());
-                    return new RuntimeException("Employee not found with id: " + requestDTO.getEmployeeId());
+                    logger.error(
+                            "Employee {} does not belong to owner {}",
+                            requestDTO.getEmployeeId(),
+                            ownerId);
+
+                    return new RuntimeException(
+                            "Employee not found.");
                 });
 
-        Optional<Attendance> existing = attendanceRepository.findByEmployeeIdAndAttendanceDate(
-                requestDTO.getEmployeeId(), requestDTO.getAttendanceDate());
+        Optional<Attendance> existing = attendanceRepository
+                .findByOwnerIdAndEmployeeIdAndAttendanceDate(
+                        ownerId,
+                        requestDTO.getEmployeeId(),
+                        requestDTO.getAttendanceDate());
 
         Attendance attendance;
+
         if (existing.isPresent()) {
-            logger.info("Updating existing attendance record for employeeId: {}", requestDTO.getEmployeeId());
+
             attendance = existing.get();
+
             attendance.setStatus(requestDTO.getStatus());
             attendance.setReason(requestDTO.getReason());
+
         } else {
-            logger.info("Creating new attendance record for employeeId: {}", requestDTO.getEmployeeId());
+
             attendance = new Attendance();
+
             attendance.setEmployee(employee);
+            attendance.setOwner(currentOwnerService.getCurrentOwner());
             attendance.setAttendanceDate(requestDTO.getAttendanceDate());
             attendance.setStatus(requestDTO.getStatus());
             attendance.setReason(requestDTO.getReason());
         }
 
         Attendance savedAttendance = attendanceRepository.save(attendance);
-        logger.info("Successfully saved attendance ID: {}", savedAttendance.getId());
+
         return mapToResponseDTO(savedAttendance);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<AttendanceResponseDTO> getMonthlyAttendance(int year, int month) {
-        logger.info("Fetching monthly attendance for Year: {}, Month: {}", year, month);
+    public List<AttendanceResponseDTO> getMonthlyAttendance(
+            int year,
+            int month) {
+
+        Long ownerId = currentOwnerService.getCurrentOwnerId();
+
         LocalDate startDate = LocalDate.of(year, month, 1);
         LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
 
-        return attendanceRepository.findAllByMonth(startDate, endDate).stream()
+        return attendanceRepository
+                .findAllByOwnerIdAndMonth(
+                        ownerId,
+                        startDate,
+                        endDate)
+                .stream()
                 .map(this::mapToResponseDTO)
                 .collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<AttendanceResponseDTO> getEmployeeMonthlyAttendance(Long employeeId, int year, int month) {
-        logger.info("Fetching monthly attendance for EmployeeId: {}, Year: {}, Month: {}", employeeId, year, month);
+    public List<AttendanceResponseDTO> getEmployeeMonthlyAttendance(
+            Long employeeId,
+            int year,
+            int month) {
+
+        Long ownerId = currentOwnerService.getCurrentOwnerId();
+
         LocalDate startDate = LocalDate.of(year, month, 1);
         LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
+        employeeRepository
+                .findByIdAndOwnerId(employeeId, ownerId)
+                .orElseThrow(() -> new RuntimeException("Employee not found."));
 
-        return attendanceRepository.findByEmployeeIdAndMonth(employeeId, startDate, endDate).stream()
+        return attendanceRepository
+                .findByOwnerIdAndEmployeeIdAndMonth(
+                        ownerId,
+                        employeeId,
+                        startDate,
+                        endDate)
+                .stream()
                 .map(this::mapToResponseDTO)
                 .collect(Collectors.toList());
     }
