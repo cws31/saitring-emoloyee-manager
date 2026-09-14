@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration>
+
+    <springProperty
+        scope="context"
+        name="applicationName"
+        source="spring.application.name"
+        defaultValue="application"/>
+
+    <appender
+        name="CONSOLE"
+        class="ch.qos.logback.core.ConsoleAppender">
+
+        <encoder
+            class="net.logstash.logback.encoder.LogstashEncoder">
+
+            <includeMdc>true</includeMdc>
+
+            <customFields>
+                {
+                    "application":"${applicationName}",
+                    "environment":"${ENVIRONMENT:-production}"
+                }
+            </customFields>
+
+        </encoder>
+
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>
