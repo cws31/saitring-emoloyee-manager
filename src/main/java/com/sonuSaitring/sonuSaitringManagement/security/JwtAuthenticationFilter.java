@@ -59,13 +59,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         throws ServletException, IOException {
 
                 String authorizationHeader = request.getHeader("Authorization");
-
-                /*
-                 * No JWT supplied.
-                 *
-                 * The SecurityFilterChain will decide whether
-                 * the endpoint requires authentication.
-                 */
                 if (authorizationHeader == null
                                 || !authorizationHeader.startsWith("Bearer ")) {
 
@@ -76,10 +69,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 tokenPresentCounter.increment();
 
                 String token = authorizationHeader.substring(7).trim();
-
-                /*
-                 * Ignore an empty Bearer token.
-                 */
                 if (token.isEmpty()) {
 
                         authenticationFailureCounter.increment();
@@ -94,11 +83,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 }
 
                 try {
-
-                        /*
-                         * Don't overwrite an authentication that may already
-                         * have been established by another mechanism.
-                         */
                         if (SecurityContextHolder.getContext()
                                         .getAuthentication() == null) {
 
@@ -138,22 +122,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         authenticationFailureCounter.increment();
 
                         SecurityContextHolder.clearContext();
-
-                        /*
-                         * Never log the JWT itself.
-                         */
                         log.debug(
                                         "JWT authentication failed method={} uri={} errorType={}",
                                         request.getMethod(),
                                         request.getRequestURI(),
                                         ex.getClass().getSimpleName());
                 }
-
-                /*
-                 * Important:
-                 * The filter doesn't decide whether the request is allowed.
-                 * SecurityConfig does that through authenticated()/permitAll().
-                 */
                 filterChain.doFilter(request, response);
         }
 }
