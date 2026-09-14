@@ -13,7 +13,7 @@ public class CorsConfig {
 
     private static final Logger logger = LoggerFactory.getLogger(CorsConfig.class);
 
-    @Value("${FRONTEND_URL}")
+    @Value("${aap.frontend.url}")
     private String frontendUrl;
 
     @Bean
@@ -26,7 +26,8 @@ public class CorsConfig {
         return new WebMvcConfigurer() {
 
             @Override
-            public void addCorsMappings(CorsRegistry registry) {
+            public void addCorsMappings(
+                    CorsRegistry registry) {
 
                 registry.addMapping("/**")
                         .allowedOrigins(frontendUrl)
@@ -39,10 +40,6 @@ public class CorsConfig {
                                 "OPTIONS")
                         .allowedHeaders("*")
                         .allowCredentials(true);
-
-                logger.info(
-                        "CORS mappings registered: origin={}, credentialsEnabled=true",
-                        frontendUrl);
             }
         };
     }

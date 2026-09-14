@@ -10,13 +10,13 @@ import com.sonuSaitring.sonuSaitringManagement.owner.dto.VerifyOtpRequest;
 
 public interface OwnerService {
 
-    OwnerRegistrationResponse register(
-            OwnerRegistrationRequest request,
-            MultipartFile logo);
+        OwnerRegistrationResponse register(
+                        OwnerRegistrationRequest request,
+                        MultipartFile logo);
 
-    OwnerLoginResponse login(
-            OwnerLoginRequest request);
+        OwnerLoginResponse login(
+                        OwnerLoginRequest request);
 
-    OwnerLoginResponse verifyLoginOtp(
-            VerifyOtpRequest request);
+        OwnerLoginResponse verifyLoginOtp(
+                        VerifyOtpRequest request);
 }

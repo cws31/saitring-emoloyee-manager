@@ -1,7 +1,5 @@
 package com.sonuSaitring.sonuSaitringManagement.owner.service;
 
-import java.security.SecureRandom;
-import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -19,8 +17,6 @@ import com.sonuSaitring.sonuSaitringManagement.owner.dto.OwnerRegistrationReques
 import com.sonuSaitring.sonuSaitringManagement.owner.dto.OwnerRegistrationResponse;
 import com.sonuSaitring.sonuSaitringManagement.owner.dto.VerifyOtpRequest;
 import com.sonuSaitring.sonuSaitringManagement.owner.entity.Owner;
-import com.sonuSaitring.sonuSaitringManagement.owner.entity.OwnerLoginOtp;
-import com.sonuSaitring.sonuSaitringManagement.owner.repository.OwnerLoginOtpRepository;
 import com.sonuSaitring.sonuSaitringManagement.owner.repository.OwnerRepository;
 import com.sonuSaitring.sonuSaitringManagement.security.JwtService;
 
@@ -33,112 +29,101 @@ public class OwnerServiceImpl implements OwnerService {
 
         private static final Logger log = LoggerFactory.getLogger(OwnerServiceImpl.class);
 
-        private static final int OTP_EXPIRY_MINUTES = 5;
-        private static final int MAX_OTP_ATTEMPTS = 5;
+        private static final String OWNER_LOGO_PATH = "/api/owners/%d/logo";
 
         private final OwnerRepository ownerRepository;
-        private final PasswordEncoder passwordEncoder;
-        private final FileStorageService fileStorageService;
-        private final JwtService jwtService;
-        private final OwnerLoginOtpRepository otpRepository;
-        private final BrevoEmailService brevoEmailService;
 
-        private final SecureRandom secureRandom = new SecureRandom();
+        private final PasswordEncoder passwordEncoder;
+
+        private final OwnerLogoService ownerLogoService;
+
+        private final JwtService jwtService;
+
+        private final OwnerOtpService ownerOtpService;
+
+        /*
+         * ============================================================
+         * Metrics
+         * ============================================================
+         */
 
         private final Counter registrationSuccessCounter;
+
         private final Counter registrationFailureCounter;
 
         private final Counter loginSuccessCounter;
+
         private final Counter loginFailureCounter;
 
-        private final Counter otpCreatedCounter;
-        private final Counter otpSuccessCounter;
-        private final Counter otpInvalidCounter;
-        private final Counter otpExpiredCounter;
-        private final Counter otpMaxAttemptsCounter;
-
         private final Timer registrationTimer;
+
         private final Timer loginTimer;
-        private final Timer otpVerificationTimer;
+
+        /*
+         * ============================================================
+         * Constructor
+         * ============================================================
+         */
 
         public OwnerServiceImpl(
                         OwnerRepository ownerRepository,
                         PasswordEncoder passwordEncoder,
-                        FileStorageService fileStorageService,
+                        OwnerLogoService ownerLogoService,
                         JwtService jwtService,
-                        OwnerLoginOtpRepository otpRepository,
-                        BrevoEmailService brevoEmailService,
+                        OwnerOtpService ownerOtpService,
                         MeterRegistry meterRegistry) {
 
                 this.ownerRepository = ownerRepository;
                 this.passwordEncoder = passwordEncoder;
-                this.fileStorageService = fileStorageService;
+                this.ownerLogoService = ownerLogoService;
                 this.jwtService = jwtService;
-                this.otpRepository = otpRepository;
-                this.brevoEmailService = brevoEmailService;
+                this.ownerOtpService = ownerOtpService;
 
                 this.registrationSuccessCounter = Counter.builder(
                                 "owner.registration.success")
-                                .description("Successful owner registrations")
+                                .description(
+                                                "Successful owner registrations")
                                 .register(meterRegistry);
 
                 this.registrationFailureCounter = Counter.builder(
                                 "owner.registration.failure")
-                                .description("Failed owner registrations")
+                                .description(
+                                                "Failed owner registrations")
                                 .register(meterRegistry);
 
                 this.loginSuccessCounter = Counter.builder(
                                 "owner.login.success")
-                                .description("Successful owner login flows")
+                                .description(
+                                                "Successful owner login flows")
                                 .register(meterRegistry);
 
                 this.loginFailureCounter = Counter.builder(
                                 "owner.login.failure")
-                                .description("Failed owner login attempts")
-                                .register(meterRegistry);
-
-                this.otpCreatedCounter = Counter.builder(
-                                "owner.otp.created")
-                                .description("Login OTPs created")
-                                .register(meterRegistry);
-
-                this.otpSuccessCounter = Counter.builder(
-                                "owner.otp.verification.success")
-                                .description("Successful OTP verifications")
-                                .register(meterRegistry);
-
-                this.otpInvalidCounter = Counter.builder(
-                                "owner.otp.verification.invalid")
-                                .description("Invalid OTP verification attempts")
-                                .register(meterRegistry);
-
-                this.otpExpiredCounter = Counter.builder(
-                                "owner.otp.verification.expired")
-                                .description("Expired OTP verification attempts")
-                                .register(meterRegistry);
-
-                this.otpMaxAttemptsCounter = Counter.builder(
-                                "owner.otp.verification.max_attempts")
-                                .description("OTP verifications blocked because maximum attempts were reached")
+                                .description(
+                                                "Failed owner login attempts")
                                 .register(meterRegistry);
 
                 this.registrationTimer = Timer.builder(
                                 "owner.registration.duration")
-                                .description("Owner registration duration")
+                                .description(
+                                                "Owner registration duration")
                                 .register(meterRegistry);
 
                 this.loginTimer = Timer.builder(
                                 "owner.login.duration")
-                                .description("Owner login duration")
-                                .register(meterRegistry);
-
-                this.otpVerificationTimer = Timer.builder(
-                                "owner.otp.verification.duration")
-                                .description("OTP verification duration")
+                                .description(
+                                                "Owner login duration")
                                 .register(meterRegistry);
         }
 
+        /*
+         * ============================================================
+         * REGISTER
+         * ============================================================
+         */
+
         @Override
+        @Transactional
         public OwnerRegistrationResponse register(
                         OwnerRegistrationRequest request,
                         MultipartFile logo) {
@@ -183,15 +168,24 @@ public class OwnerServiceImpl implements OwnerService {
                                                 "Username is already taken.");
                         }
 
-                        String logoUrl = fileStorageService.uploadOrganizationLogo(logo);
+                        /*
+                         * ========================================================
+                         * Create owner first
+                         * ========================================================
+                         *
+                         * We need the generated owner ID because the logo is
+                         * stored in owner_logos using owner_id.
+                         */
 
                         Owner owner = new Owner();
 
                         owner.setOwnerName(
-                                        request.getOwnerName().trim());
+                                        request.getOwnerName()
+                                                        .trim());
 
                         owner.setOrganizationName(
-                                        request.getOrganizationName().trim());
+                                        request.getOrganizationName()
+                                                        .trim());
 
                         owner.setEmail(email);
 
@@ -201,9 +195,29 @@ public class OwnerServiceImpl implements OwnerService {
                                         passwordEncoder.encode(
                                                         request.getPassword()));
 
-                        owner.setLogoUrl(logoUrl);
-
                         Owner savedOwner = ownerRepository.save(owner);
+
+                        /*
+                         * ========================================================
+                         * Store logo in MySQL
+                         * ========================================================
+                         */
+
+                        ownerLogoService.saveLogo(
+                                        savedOwner.getId(),
+                                        logo);
+
+                        /*
+                         * ========================================================
+                         * Logo URL
+                         * ========================================================
+                         *
+                         * This is no longer a physical filesystem URL.
+                         *
+                         * It points to our Spring Boot logo endpoint.
+                         */
+
+                        String logoUrl = buildLogoUrl(savedOwner.getId());
 
                         registrationSuccessCounter.increment();
 
@@ -218,7 +232,7 @@ public class OwnerServiceImpl implements OwnerService {
                                         savedOwner.getOrganizationName(),
                                         savedOwner.getEmail(),
                                         savedOwner.getUsername(),
-                                        savedOwner.getLogoUrl());
+                                        logoUrl);
 
                 } catch (ConflictException ex) {
 
@@ -244,14 +258,21 @@ public class OwnerServiceImpl implements OwnerService {
                 }
         }
 
+        /*
+         * ============================================================
+         * LOGIN
+         * ============================================================
+         */
+
         @Override
-        @Transactional
+        @Transactional(readOnly = true)
         public OwnerLoginResponse login(
                         OwnerLoginRequest request) {
 
                 long start = System.nanoTime();
 
-                String username = request.getUsername().trim();
+                String username = request.getUsername()
+                                .trim();
 
                 log.info(
                                 "Owner login started username={}",
@@ -263,7 +284,8 @@ public class OwnerServiceImpl implements OwnerService {
                                         .findByUsername(username)
                                         .orElseThrow(() -> {
 
-                                                loginFailureCounter.increment();
+                                                loginFailureCounter
+                                                                .increment();
 
                                                 log.warn(
                                                                 "Owner login failed because username was not found username={}",
@@ -287,62 +309,28 @@ public class OwnerServiceImpl implements OwnerService {
                                                 "Invalid username or password.");
                         }
 
-                        otpRepository
-                                        .findTopByOwnerIdAndUsedFalseOrderByCreatedAtDesc(
-                                                        owner.getId())
-                                        .ifPresent(previousOtp -> {
-
-                                                previousOtp.setUsed(true);
-
-                                                otpRepository.save(previousOtp);
-
-                                                log.debug(
-                                                                "Previous unused OTP invalidated ownerId={}",
-                                                                owner.getId());
-                                        });
-
-                        String otp = generateOtp();
-
-                        OwnerLoginOtp loginOtp = new OwnerLoginOtp();
-
-                        loginOtp.setOwner(owner);
-
-                        loginOtp.setOtpHash(
-                                        passwordEncoder.encode(otp));
-
-                        loginOtp.setExpiresAt(
-                                        LocalDateTime.now()
-                                                        .plusMinutes(OTP_EXPIRY_MINUTES));
-
-                        loginOtp.setUsed(false);
-
-                        loginOtp.setAttempts(0);
-
-                        loginOtp.setCreatedAt(
-                                        LocalDateTime.now());
-
-                        otpRepository.save(loginOtp);
-
-                        otpCreatedCounter.increment();
-
-                        log.info(
-                                        "Login OTP created ownerId={} expiresInMinutes={}",
-                                        owner.getId(),
-                                        OTP_EXPIRY_MINUTES);
-
                         /*
-                         * IMPORTANT:
-                         * Never log the actual OTP.
+                         * Password is correct.
+                         *
+                         * OTP service handles:
+                         *
+                         * - OTP generation
+                         * - hashing
+                         * - Redis storage
+                         * - expiration
+                         * - resend cooldown
+                         * - rate limiting
+                         * - Brevo delivery
                          */
-                        brevoEmailService.sendLoginOtp(
+
+                        ownerOtpService.createAndSendOtp(
+                                        owner.getId(),
                                         owner.getEmail(),
-                                        owner.getOwnerName(),
-                                        otp);
+                                        owner.getOwnerName());
 
                         log.info(
-                                        "Login OTP delivery requested ownerId={} email={}",
-                                        owner.getId(),
-                                        maskEmail(owner.getEmail()));
+                                        "Login OTP created and delivery requested ownerId={}",
+                                        owner.getId());
 
                         loginSuccessCounter.increment();
 
@@ -381,14 +369,19 @@ public class OwnerServiceImpl implements OwnerService {
                 }
         }
 
+        /*
+         * ============================================================
+         * VERIFY OTP
+         * ============================================================
+         */
+
         @Override
-        @Transactional
+        @Transactional(readOnly = true)
         public OwnerLoginResponse verifyLoginOtp(
                         VerifyOtpRequest request) {
 
-                long start = System.nanoTime();
-
-                String username = request.getUsername().trim();
+                String username = request.getUsername()
+                                .trim();
 
                 log.info(
                                 "OTP verification started username={}",
@@ -400,8 +393,6 @@ public class OwnerServiceImpl implements OwnerService {
                                         .findByUsername(username)
                                         .orElseThrow(() -> {
 
-                                                loginFailureCounter.increment();
-
                                                 log.warn(
                                                                 "OTP verification rejected because username was not found username={}",
                                                                 username);
@@ -410,101 +401,29 @@ public class OwnerServiceImpl implements OwnerService {
                                                                 "Invalid verification request.");
                                         });
 
-                        OwnerLoginOtp loginOtp = otpRepository
-                                        .findTopByOwnerIdAndUsedFalseOrderByCreatedAtDesc(
-                                                        owner.getId())
-                                        .orElseThrow(() -> {
+                        /*
+                         * OwnerOtpService:
+                         *
+                         * - retrieves Redis OTP
+                         * - checks expiration
+                         * - checks attempts
+                         * - verifies hash
+                         * - consumes OTP
+                         * - prevents concurrent verification
+                         */
 
-                                                otpInvalidCounter.increment();
+                        ownerOtpService.verifyOtp(
+                                        owner.getId(),
+                                        request.getOtp());
 
-                                                log.warn(
-                                                                "OTP verification failed because no active OTP exists ownerId={}",
-                                                                owner.getId());
-
-                                                return new UnauthorizedException(
-                                                                "Invalid or expired verification code.");
-                                        });
-
-                        if (loginOtp.getExpiresAt()
-                                        .isBefore(LocalDateTime.now())) {
-
-                                loginOtp.setUsed(true);
-
-                                otpRepository.save(loginOtp);
-
-                                otpExpiredCounter.increment();
-
-                                log.warn(
-                                                "OTP verification failed because OTP expired ownerId={}",
-                                                owner.getId());
-
-                                throw new UnauthorizedException(
-                                                "Verification code has expired. Please request a new code.");
-                        }
-
-                        if (loginOtp.getAttempts() >= MAX_OTP_ATTEMPTS) {
-
-                                loginOtp.setUsed(true);
-
-                                otpRepository.save(loginOtp);
-
-                                otpMaxAttemptsCounter.increment();
-
-                                log.warn(
-                                                "OTP verification blocked because maximum attempts were reached ownerId={}",
-                                                owner.getId());
-
-                                throw new UnauthorizedException(
-                                                "Too many incorrect attempts. Please request a new code.");
-                        }
-
-                        boolean otpMatches = passwordEncoder.matches(
-                                        request.getOtp(),
-                                        loginOtp.getOtpHash());
-
-                        if (!otpMatches) {
-
-                                int attempts = loginOtp.getAttempts() + 1;
-
-                                loginOtp.setAttempts(attempts);
-
-                                otpInvalidCounter.increment();
-
-                                if (attempts >= MAX_OTP_ATTEMPTS) {
-
-                                        loginOtp.setUsed(true);
-
-                                        otpRepository.save(loginOtp);
-
-                                        otpMaxAttemptsCounter.increment();
-
-                                        log.warn(
-                                                        "OTP verification locked after maximum attempts ownerId={} attempts={}",
-                                                        owner.getId(),
-                                                        attempts);
-
-                                        throw new UnauthorizedException(
-                                                        "Too many incorrect attempts. Please request a new code.");
-                                }
-
-                                otpRepository.save(loginOtp);
-
-                                log.warn(
-                                                "OTP verification failed ownerId={} attempts={}",
-                                                owner.getId(),
-                                                attempts);
-
-                                throw new UnauthorizedException(
-                                                "Invalid verification code.");
-                        }
-
-                        loginOtp.setUsed(true);
-
-                        otpRepository.save(loginOtp);
+                        /*
+                         * OTP is valid.
+                         *
+                         * Generate JWT only after successful OTP verification.
+                         */
 
                         String token = jwtService.generateToken(owner);
 
-                        otpSuccessCounter.increment();
                         loginSuccessCounter.increment();
 
                         log.info(
@@ -520,7 +439,7 @@ public class OwnerServiceImpl implements OwnerService {
                                         owner.getOwnerName(),
                                         owner.getOrganizationName(),
                                         owner.getUsername(),
-                                        owner.getLogoUrl());
+                                        buildLogoUrl(owner.getId()));
 
                 } catch (UnauthorizedException ex) {
 
@@ -537,31 +456,39 @@ public class OwnerServiceImpl implements OwnerService {
                                         ex);
 
                         throw ex;
-
-                } finally {
-
-                        otpVerificationTimer.record(
-                                        System.nanoTime() - start,
-                                        TimeUnit.NANOSECONDS);
                 }
         }
 
-        private String generateOtp() {
+        /*
+         * ============================================================
+         * LOGO URL
+         * ============================================================
+         */
 
-                int otp = 100000 + secureRandom.nextInt(900000);
+        private String buildLogoUrl(Long ownerId) {
 
-                return String.valueOf(otp);
+                return OWNER_LOGO_PATH.formatted(ownerId);
         }
 
-        private String maskEmail(String email) {
+        /*
+         * ============================================================
+         * EMAIL MASKING
+         * ============================================================
+         */
 
-                if (email == null || email.isBlank()) {
+        private String maskEmail(
+                        String email) {
+
+                if (email == null
+                                || email.isBlank()) {
+
                         return "unknown";
                 }
 
                 int atIndex = email.indexOf('@');
 
                 if (atIndex <= 1) {
+
                         return "***";
                 }
 

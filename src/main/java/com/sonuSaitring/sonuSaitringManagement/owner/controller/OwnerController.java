@@ -26,66 +26,70 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/owners")
 public class OwnerController {
 
-    private static final Logger log = LoggerFactory.getLogger(OwnerController.class);
+        private static final Logger log = LoggerFactory.getLogger(OwnerController.class);
 
-    private final OwnerService ownerService;
+        private final OwnerService ownerService;
 
-    public OwnerController(OwnerService ownerService) {
-        this.ownerService = ownerService;
-    }
+        public OwnerController(
+                        OwnerService ownerService) {
 
-    @PostMapping(value = "/register", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<OwnerRegistrationResponse> registerOwner(
-            @Valid @RequestPart("request") OwnerRegistrationRequest request,
-            @RequestPart("logo") MultipartFile logo) {
+                this.ownerService = ownerService;
+        }
 
-        log.info(
-                "Owner registration request received: username={}, logoPresent={}",
-                request.getUsername(),
-                logo != null && !logo.isEmpty());
+        @PostMapping(value = "/register", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+        public ResponseEntity<OwnerRegistrationResponse> registerOwner(
+                        @Valid @RequestPart("request") OwnerRegistrationRequest request,
+                        @RequestPart("logo") MultipartFile logo) {
 
-        OwnerRegistrationResponse response = ownerService.register(request, logo);
+                log.info(
+                                "Owner registration request received: username={}, logoPresent={}",
+                                request.getUsername(),
+                                logo != null && !logo.isEmpty());
 
-        log.info(
-                "Owner registration request completed: username={}",
-                request.getUsername());
+                OwnerRegistrationResponse response = ownerService.register(
+                                request,
+                                logo);
 
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(response);
-    }
+                log.info(
+                                "Owner registration request completed: username={}",
+                                request.getUsername());
 
-    @PostMapping("/login")
-    public ResponseEntity<OwnerLoginResponse> login(
-            @Valid @RequestBody OwnerLoginRequest request) {
+                return ResponseEntity
+                                .status(HttpStatus.CREATED)
+                                .body(response);
+        }
 
-        log.info(
-                "Owner login request received: username={}",
-                request.getUsername());
+        @PostMapping("/login")
+        public ResponseEntity<OwnerLoginResponse> login(
+                        @Valid @RequestBody OwnerLoginRequest request) {
 
-        OwnerLoginResponse response = ownerService.login(request);
+                log.info(
+                                "Owner login request received: username={}",
+                                request.getUsername());
 
-        log.info(
-                "Owner login request completed: username={}",
-                request.getUsername());
+                OwnerLoginResponse response = ownerService.login(request);
 
-        return ResponseEntity.ok(response);
-    }
+                log.info(
+                                "Owner login request completed: username={}",
+                                request.getUsername());
 
-    @PostMapping("/verify-otp")
-    public ResponseEntity<OwnerLoginResponse> verifyOtp(
-            @Valid @RequestBody VerifyOtpRequest request) {
+                return ResponseEntity.ok(response);
+        }
 
-        log.info(
-                "Owner OTP verification request received: username={}",
-                request.getUsername());
+        @PostMapping("/verify-otp")
+        public ResponseEntity<OwnerLoginResponse> verifyOtp(
+                        @Valid @RequestBody VerifyOtpRequest request) {
 
-        OwnerLoginResponse response = ownerService.verifyLoginOtp(request);
+                log.info(
+                                "Owner OTP verification request received: username={}",
+                                request.getUsername());
 
-        log.info(
-                "Owner OTP verification completed: username={}",
-                request.getUsername());
+                OwnerLoginResponse response = ownerService.verifyLoginOtp(request);
 
-        return ResponseEntity.ok(response);
-    }
+                log.info(
+                                "Owner OTP verification completed: username={}",
+                                request.getUsername());
+
+                return ResponseEntity.ok(response);
+        }
 }
