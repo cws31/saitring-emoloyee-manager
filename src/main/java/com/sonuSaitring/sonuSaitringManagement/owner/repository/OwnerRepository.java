@@ -7,17 +7,25 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 
 public interface OwnerRepository
-        extends JpaRepository<Owner, Long> {
+                extends JpaRepository<Owner, Long> {
 
-    boolean existsByEmail(String email);
+        boolean existsByEmail(String email);
 
-    boolean existsByMobileNumber(String mobileNumber);
+        boolean existsByMobileNumber(String mobileNumber);
 
-    Optional<Owner> findByEmail(String email);
+        boolean existsByEmailAndIdNot(
+                        String email,
+                        Long id);
 
-    Optional<Owner> findByMobileNumber(String mobileNumber);
+        boolean existsByMobileNumberAndIdNot(
+                        String mobileNumber,
+                        Long id);
 
-    Optional<Owner> findByEmailOrMobileNumber(
-            String email,
-            String mobileNumber);
+        Optional<Owner> findByEmail(String email);
+
+        Optional<Owner> findByMobileNumber(String mobileNumber);
+
+        Optional<Owner> findByEmailOrMobileNumber(
+                        String email,
+                        String mobileNumber);
 }
