@@ -3,10 +3,15 @@ package com.sonuSaitring.sonuSaitringManagement.security;
 import java.io.IOException;
 import java.util.Collections;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -17,12 +22,34 @@ import jakarta.servlet.http.HttpServletResponse;
 public class JwtAuthenticationFilter
         extends OncePerRequestFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+
     private final JwtService jwtService;
 
+    private final Counter tokenPresentCounter;
+    private final Counter authenticationSuccessCounter;
+    private final Counter authenticationFailureCounter;
+
     public JwtAuthenticationFilter(
-            JwtService jwtService) {
+            JwtService jwtService,
+            MeterRegistry meterRegistry) {
 
         this.jwtService = jwtService;
+
+        this.tokenPresentCounter = Counter.builder(
+                "security.jwt.token.present")
+                .description("Requests containing a Bearer token")
+                .register(meterRegistry);
+
+        this.authenticationSuccessCounter = Counter.builder(
+                "security.jwt.authentication.success")
+                .description("Successful JWT authentications")
+                .register(meterRegistry);
+
+        this.authenticationFailureCounter = Counter.builder(
+                "security.jwt.authentication.failure")
+                .description("Failed JWT authentications")
+                .register(meterRegistry);
     }
 
     @Override
@@ -41,6 +68,8 @@ public class JwtAuthenticationFilter
             return;
         }
 
+        tokenPresentCounter.increment();
+
         String token = authorizationHeader.substring(7);
 
         try {
@@ -57,11 +86,36 @@ public class JwtAuthenticationFilter
                 SecurityContextHolder
                         .getContext()
                         .setAuthentication(authentication);
+
+                authenticationSuccessCounter.increment();
+
+                log.debug(
+                        "JWT authentication successful ownerId={} method={} uri={}",
+                        ownerId,
+                        request.getMethod(),
+                        request.getRequestURI());
+
+            } else {
+
+                authenticationFailureCounter.increment();
+
+                log.warn(
+                        "JWT authentication failed method={} uri={}",
+                        request.getMethod(),
+                        request.getRequestURI());
             }
 
-        } catch (Exception e) {
+        } catch (Exception ex) {
+
+            authenticationFailureCounter.increment();
 
             SecurityContextHolder.clearContext();
+
+            log.warn(
+                    "JWT authentication failed unexpectedly method={} uri={} errorType={}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    ex.getClass().getSimpleName());
         }
 
         filterChain.doFilter(request, response);

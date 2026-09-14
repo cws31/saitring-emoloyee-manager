@@ -11,14 +11,14 @@ import java.util.Optional;
 @Repository
 public interface HisabDetailRepository extends JpaRepository<HisabDetail, Long> {
 
-    @Query("""
-            SELECT d
-            FROM HisabDetail d
-            JOIN FETCH d.monthClosing h
-            WHERE d.id = :detailId
-              AND h.owner.id = :ownerId
-            """)
-    Optional<HisabDetail> findByIdAndOwnerId(
-            @Param("detailId") Long detailId,
-            @Param("ownerId") Long ownerId);
+        @Query("""
+                        SELECT d
+                        FROM HisabDetail d
+                        JOIN FETCH d.monthClosing h
+                        WHERE d.id = :detailId
+                          AND h.owner.id = :ownerId
+                        """)
+        Optional<HisabDetail> findByIdAndOwnerId(
+                        @Param("detailId") Long detailId,
+                        @Param("ownerId") Long ownerId);
 }

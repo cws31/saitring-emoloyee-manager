@@ -10,19 +10,19 @@ import java.util.Optional;
 @Repository
 public interface HisabRepository extends JpaRepository<Hisab, Long> {
 
-    Optional<Hisab> findByOwnerIdAndYearAndMonth(
-            Long ownerId,
-            int year,
-            int month);
+        Optional<Hisab> findByOwnerIdAndYearAndMonth(
+                        Long ownerId,
+                        int year,
+                        int month);
 
-    boolean existsByOwnerIdAndYearAndMonth(
-            Long ownerId,
-            int year,
-            int month);
+        boolean existsByOwnerIdAndYearAndMonth(
+                        Long ownerId,
+                        int year,
+                        int month);
 
-    List<Hisab> findAllByOwnerId(Long ownerId);
+        List<Hisab> findAllByOwnerId(Long ownerId);
 
-    Optional<Hisab> findByIdAndOwnerId(
-            Long id,
-            Long ownerId);
+        Optional<Hisab> findByIdAndOwnerId(
+                        Long id,
+                        Long ownerId);
 }

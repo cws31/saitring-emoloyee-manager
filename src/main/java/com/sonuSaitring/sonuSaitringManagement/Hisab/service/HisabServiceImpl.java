@@ -16,6 +16,10 @@ import com.sonuSaitring.sonuSaitringManagement.sattlement.entity.EmployeeSettlem
 import com.sonuSaitring.sonuSaitringManagement.sattlement.repository.EmployeeSettlementRepository;
 import com.sonuSaitring.sonuSaitringManagement.security.CurrentOwnerService;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,399 +61,521 @@ public class HisabServiceImpl implements HisabService {
         @Autowired
         private CurrentOwnerService currentOwnerService;
 
+        private final Counter reportGenerationSuccess;
+        private final Counter reportGenerationFailure;
+        private final Counter completionUpdate;
+        private final Counter completionNotFound;
+        private final Counter lookupSuccess;
+        private final Counter lookupNotFound;
+        private final Counter carryForwardCreated;
+        private final Counter carryForwardUpdated;
+        private final Counter carryForwardDeleted;
+
+        private final Timer reportGenerationTimer;
+        private final Timer completionUpdateTimer;
+        private final Timer lookupTimer;
+        private final Timer listTimer;
+
+        public HisabServiceImpl(MeterRegistry meterRegistry) {
+
+                this.reportGenerationSuccess = Counter.builder("hisab.report.generation")
+                                .tag("result", "success")
+                                .description("Number of successfully generated Hisab reports")
+                                .register(meterRegistry);
+
+                this.reportGenerationFailure = Counter.builder("hisab.report.generation")
+                                .tag("result", "failure")
+                                .description("Number of failed Hisab report generations")
+                                .register(meterRegistry);
+
+                this.completionUpdate = Counter.builder("hisab.completion.update")
+                                .description("Number of Hisab completion status updates")
+                                .register(meterRegistry);
+
+                this.completionNotFound = Counter.builder("hisab.completion.not_found")
+                                .description("Number of Hisab completion updates where detail was not found")
+                                .register(meterRegistry);
+
+                this.lookupSuccess = Counter.builder("hisab.lookup")
+                                .tag("result", "success")
+                                .description("Number of successful Hisab lookups")
+                                .register(meterRegistry);
+
+                this.lookupNotFound = Counter.builder("hisab.lookup")
+                                .tag("result", "not_found")
+                                .description("Number of unsuccessful Hisab lookups")
+                                .register(meterRegistry);
+
+                this.carryForwardCreated = Counter.builder("hisab.carry_forward")
+                                .tag("operation", "created")
+                                .description("Number of carry-forward advances created")
+                                .register(meterRegistry);
+
+                this.carryForwardUpdated = Counter.builder("hisab.carry_forward")
+                                .tag("operation", "updated")
+                                .description("Number of carry-forward advances updated")
+                                .register(meterRegistry);
+
+                this.carryForwardDeleted = Counter.builder("hisab.carry_forward")
+                                .tag("operation", "deleted")
+                                .description("Number of carry-forward advances deleted")
+                                .register(meterRegistry);
+
+                this.reportGenerationTimer = Timer.builder("hisab.report.generation.duration")
+                                .description("Time taken to generate a Hisab report")
+                                .register(meterRegistry);
+
+                this.completionUpdateTimer = Timer.builder("hisab.completion.update.duration")
+                                .description("Time taken to update Hisab completion status")
+                                .register(meterRegistry);
+
+                this.lookupTimer = Timer.builder("hisab.lookup.duration")
+                                .description("Time taken for Hisab lookup")
+                                .register(meterRegistry);
+
+                this.listTimer = Timer.builder("hisab.list.duration")
+                                .description("Time taken to fetch Hisab month closings")
+                                .register(meterRegistry);
+        }
+
         @Transactional
         public Hisab generateMonthReport(int year, int month) {
 
-                Long ownerId = currentOwnerService.getCurrentOwnerId();
-                Owner owner = currentOwnerService.getCurrentOwner();
+                return reportGenerationTimer.record(() -> {
 
-                logger.info(
-                                "=== Starting Month Report Generation for Owner: {}, Year: {}, Month: {} ===",
-                                ownerId,
-                                year,
-                                month);
+                        Long ownerId = currentOwnerService.getCurrentOwnerId();
+                        Owner owner = currentOwnerService.getCurrentOwner();
 
-                LocalDate startDate = LocalDate.of(year, month, 1);
+                        logger.info(
+                                        "Starting month report generation: ownerId={}, year={}, month={}",
+                                        ownerId,
+                                        year,
+                                        month);
 
-                LocalDate endDate = startDate.withDayOfMonth(
-                                startDate.lengthOfMonth());
+                        try {
 
-                LocalDate settlementCutoffDate = endDate.plusDays(10);
+                                LocalDate startDate = LocalDate.of(year, month, 1);
 
-                LocalDate nextMonthFirstDay = startDate.plusMonths(1);
+                                LocalDate endDate = startDate.withDayOfMonth(
+                                                startDate.lengthOfMonth());
 
-                LocalDate prevMonthDate = startDate.minusMonths(1);
+                                LocalDate settlementCutoffDate = endDate.plusDays(10);
 
-                Hisab prevHisab = hisabRepository
-                                .findByOwnerIdAndYearAndMonth(
-                                                ownerId,
-                                                prevMonthDate.getYear(),
-                                                prevMonthDate.getMonthValue())
-                                .orElse(null);
+                                LocalDate nextMonthFirstDay = startDate.plusMonths(1);
 
-                Map<Long, BigDecimal> prevRemainingBalanceMap = new java.util.HashMap<>();
+                                LocalDate prevMonthDate = startDate.minusMonths(1);
 
-                if (prevHisab != null
-                                && prevHisab.getDetails() != null) {
+                                Hisab prevHisab = hisabRepository
+                                                .findByOwnerIdAndYearAndMonth(
+                                                                ownerId,
+                                                                prevMonthDate.getYear(),
+                                                                prevMonthDate.getMonthValue())
+                                                .orElse(null);
 
-                        for (HisabDetail pd : prevHisab.getDetails()) {
+                                Map<Long, BigDecimal> prevRemainingBalanceMap = new java.util.HashMap<>();
 
-                                if (pd.getEmployee() != null
-                                                && pd.getRemainingBalance() != null) {
+                                if (prevHisab != null
+                                                && prevHisab.getDetails() != null) {
 
-                                        prevRemainingBalanceMap.put(
-                                                        pd.getEmployee().getId(),
-                                                        pd.getRemainingBalance());
-                                }
-                        }
-                }
+                                        for (HisabDetail pd : prevHisab.getDetails()) {
 
-                List<Employee> activeEmployees = employeeRepository.findAllByOwnerId(ownerId)
-                                .stream()
-                                .filter(employee -> !employee.isBlocked())
-                                .collect(Collectors.toList());
+                                                if (pd.getEmployee() != null
+                                                                && pd.getRemainingBalance() != null) {
 
-                logger.info(
-                                "Found {} active employees for owner {}.",
-                                activeEmployees.size(),
-                                ownerId);
-
-                List<EmployeeSettlement> monthSettlements = settlementRepository
-                                .findByOwnerIdAndSettlementDateBetween(
-                                                ownerId,
-                                                startDate,
-                                                settlementCutoffDate);
-
-                String currentMonthKey = month + "/" + year;
-
-                List<EmployeeSettlement> filteredMonthSettlements = monthSettlements.stream()
-                                .filter(s -> s.getEmployee() != null
-                                                && s.getAmountPaid() != null)
-                                .filter(s -> {
-
-                                        String note = s.getNote() != null
-                                                        ? s.getNote().toLowerCase()
-                                                        : "";
-
-                                        if (note.contains("closing")
-                                                        || note.contains("month closing")) {
-
-                                                return note.contains(currentMonthKey);
-                                        }
-
-                                        return true;
-                                })
-                                .collect(Collectors.toList());
-
-                Map<Long, BigDecimal> paidAmountMap = filteredMonthSettlements.stream()
-                                .collect(Collectors.groupingBy(
-                                                s -> s.getEmployee().getId(),
-                                                Collectors.mapping(
-                                                                EmployeeSettlement::getAmountPaid,
-                                                                Collectors.reducing(
-                                                                                BigDecimal.ZERO,
-                                                                                BigDecimal::add))));
-
-                Hisab hisabRecord = hisabRepository
-                                .findByOwnerIdAndYearAndMonth(
-                                                ownerId,
-                                                year,
-                                                month)
-                                .orElseGet(() -> {
-
-                                        logger.info(
-                                                        "Creating new Hisab record for Owner: {}, Year: {}, Month: {}",
-                                                        ownerId,
-                                                        year,
-                                                        month);
-
-                                        Hisab hr = new Hisab();
-
-                                        hr.setYear(year);
-                                        hr.setMonth(month);
-                                        hr.setClosedAt(LocalDateTime.now());
-                                        hr.setOwner(owner);
-
-                                        return hr;
-                                });
-
-                if (hisabRecord.getOwner() == null) {
-                        hisabRecord.setOwner(owner);
-                }
-
-                Map<Long, HisabDetail> existingDetailsMap = new java.util.HashMap<>();
-
-                if (hisabRecord.getDetails() != null) {
-
-                        existingDetailsMap = hisabRecord.getDetails()
-                                        .stream()
-                                        .filter(d -> d.getEmployee() != null)
-                                        .collect(Collectors.toMap(
-                                                        d -> d.getEmployee().getId(),
-                                                        d -> d));
-                }
-
-                BigDecimal totalPayable = BigDecimal.ZERO;
-
-                BigDecimal totalOverAdvance = BigDecimal.ZERO;
-
-                List<HisabDetail> newDetailsList = new ArrayList<>();
-
-                for (Employee employee : activeEmployees) {
-
-                        List<Attendance> attendances = attendanceRepository
-                                        .findByOwnerIdAndEmployeeIdAndMonth(
-                                                        ownerId,
-                                                        employee.getId(),
-                                                        startDate,
-                                                        endDate);
-
-                        BigDecimal totalPresences = BigDecimal.ZERO;
-
-                        if (attendances != null) {
-
-                                for (Attendance attendance : attendances) {
-
-                                        String statusStr = attendance.getStatus() != null
-                                                        ? attendance.getStatus().name()
-                                                        : "";
-
-                                        if ("PRESENT".equalsIgnoreCase(statusStr)) {
-
-                                                totalPresences = totalPresences.add(BigDecimal.ONE);
-
-                                        } else if ("HALF_DAY".equalsIgnoreCase(statusStr)) {
-
-                                                totalPresences = totalPresences.add(
-                                                                new BigDecimal("0.5"));
+                                                        prevRemainingBalanceMap.put(
+                                                                        pd.getEmployee().getId(),
+                                                                        pd.getRemainingBalance());
+                                                }
                                         }
                                 }
-                        }
 
-                        List<EmployeeAdvance> advances = advanceRepository
-                                        .findByOwnerIdAndEmployeeIdAndPaymentDateBetween(
-                                                        ownerId,
-                                                        employee.getId(),
-                                                        startDate,
-                                                        endDate);
+                                List<Employee> activeEmployees = employeeRepository.findAllByOwnerId(ownerId)
+                                                .stream()
+                                                .filter(employee -> !employee.isBlocked())
+                                                .collect(Collectors.toList());
 
-                        BigDecimal currentMonthAdvance = BigDecimal.ZERO;
+                                logger.info(
+                                                "Active employees found: ownerId={}, count={}",
+                                                ownerId,
+                                                activeEmployees.size());
 
-                        if (advances != null) {
+                                List<EmployeeSettlement> monthSettlements = settlementRepository
+                                                .findByOwnerIdAndSettlementDateBetween(
+                                                                ownerId,
+                                                                startDate,
+                                                                settlementCutoffDate);
 
-                                for (EmployeeAdvance a : advances) {
+                                String currentMonthKey = month + "/" + year;
 
-                                        String note = a.getNote() != null
-                                                        ? a.getNote().toLowerCase()
-                                                        : "";
+                                List<EmployeeSettlement> filteredMonthSettlements = monthSettlements.stream()
+                                                .filter(s -> s.getEmployee() != null
+                                                                && s.getAmountPaid() != null)
+                                                .filter(s -> {
 
-                                        boolean isCarryForward = note.contains("carry-forward")
-                                                        || note.startsWith(
-                                                                        "previous month balance carry-forward");
+                                                        String note = s.getNote() != null
+                                                                        ? s.getNote().toLowerCase()
+                                                                        : "";
 
-                                        if (!isCarryForward
-                                                        && a.getAmount() != null) {
+                                                        if (note.contains("closing")
+                                                                        || note.contains("month closing")) {
 
-                                                currentMonthAdvance = currentMonthAdvance.add(
-                                                                BigDecimal.valueOf(
-                                                                                a.getAmount()));
-                                        }
+                                                                return note.contains(currentMonthKey);
+                                                        }
+
+                                                        return true;
+                                                })
+                                                .collect(Collectors.toList());
+
+                                logger.debug(
+                                                "Settlement data loaded: ownerId={}, total={}, filtered={}",
+                                                ownerId,
+                                                monthSettlements.size(),
+                                                filteredMonthSettlements.size());
+
+                                Map<Long, BigDecimal> paidAmountMap = filteredMonthSettlements.stream()
+                                                .collect(Collectors.groupingBy(
+                                                                s -> s.getEmployee().getId(),
+                                                                Collectors.mapping(
+                                                                                EmployeeSettlement::getAmountPaid,
+                                                                                Collectors.reducing(
+                                                                                                BigDecimal.ZERO,
+                                                                                                BigDecimal::add))));
+
+                                Hisab hisabRecord = hisabRepository
+                                                .findByOwnerIdAndYearAndMonth(
+                                                                ownerId,
+                                                                year,
+                                                                month)
+                                                .orElseGet(() -> {
+
+                                                        logger.info(
+                                                                        "Creating new Hisab record: ownerId={}, year={}, month={}",
+                                                                        ownerId,
+                                                                        year,
+                                                                        month);
+
+                                                        Hisab hr = new Hisab();
+
+                                                        hr.setYear(year);
+                                                        hr.setMonth(month);
+                                                        hr.setClosedAt(LocalDateTime.now());
+                                                        hr.setOwner(owner);
+
+                                                        return hr;
+                                                });
+
+                                if (hisabRecord.getOwner() == null) {
+                                        hisabRecord.setOwner(owner);
                                 }
-                        }
 
-                        BigDecimal rate = employee.getInitialRate() != null
-                                        ? employee.getInitialRate()
-                                        : BigDecimal.ZERO;
+                                Map<Long, HisabDetail> existingDetailsMap = new java.util.HashMap<>();
 
-                        BigDecimal totalEarning = totalPresences.multiply(rate);
+                                if (hisabRecord.getDetails() != null) {
 
-                        BigDecimal previousMonthBalance = prevRemainingBalanceMap.getOrDefault(
-                                        employee.getId(),
-                                        BigDecimal.ZERO);
+                                        existingDetailsMap = hisabRecord.getDetails()
+                                                        .stream()
+                                                        .filter(d -> d.getEmployee() != null)
+                                                        .collect(Collectors.toMap(
+                                                                        d -> d.getEmployee().getId(),
+                                                                        d -> d));
+                                }
 
-                        BigDecimal safeCurrentMonthAdvance = currentMonthAdvance != null
-                                        ? currentMonthAdvance
-                                        : BigDecimal.ZERO;
+                                BigDecimal totalPayable = BigDecimal.ZERO;
 
-                        BigDecimal netPayable = totalEarning
-                                        .subtract(safeCurrentMonthAdvance)
-                                        .add(previousMonthBalance);
+                                BigDecimal totalOverAdvance = BigDecimal.ZERO;
 
-                        BigDecimal amountPaid = paidAmountMap.getOrDefault(
-                                        employee.getId(),
-                                        BigDecimal.ZERO);
+                                List<HisabDetail> newDetailsList = new ArrayList<>();
 
-                        BigDecimal remainingBalance = netPayable.subtract(amountPaid);
+                                int carryForwardCreatedCount = 0;
+                                int carryForwardUpdatedCount = 0;
+                                int carryForwardDeletedCount = 0;
 
-                        if (remainingBalance.compareTo(BigDecimal.ZERO) > 0) {
+                                for (Employee employee : activeEmployees) {
 
-                                totalPayable = totalPayable.add(remainingBalance);
+                                        List<Attendance> attendances = attendanceRepository
+                                                        .findByOwnerIdAndEmployeeIdAndMonth(
+                                                                        ownerId,
+                                                                        employee.getId(),
+                                                                        startDate,
+                                                                        endDate);
 
-                        } else if (remainingBalance.compareTo(BigDecimal.ZERO) < 0) {
+                                        BigDecimal totalPresences = BigDecimal.ZERO;
 
-                                totalOverAdvance = totalOverAdvance.add(
-                                                remainingBalance.abs());
-                        }
+                                        if (attendances != null) {
 
-                        HisabDetail detail = existingDetailsMap.getOrDefault(
-                                        employee.getId(),
-                                        new HisabDetail());
+                                                for (Attendance attendance : attendances) {
 
-                        detail.setMonthClosing(hisabRecord);
+                                                        String statusStr = attendance.getStatus() != null
+                                                                        ? attendance.getStatus().name()
+                                                                        : "";
 
-                        detail.setEmployee(employee);
+                                                        if ("PRESENT".equalsIgnoreCase(statusStr)) {
 
-                        detail.setEmployeeName(employee.getName());
+                                                                totalPresences = totalPresences.add(BigDecimal.ONE);
 
-                        detail.setTotalPresences(totalPresences);
+                                                        } else if ("HALF_DAY".equalsIgnoreCase(statusStr)) {
 
-                        detail.setRate(rate);
+                                                                totalPresences = totalPresences.add(
+                                                                                new BigDecimal("0.5"));
+                                                        }
+                                                }
+                                        }
 
-                        detail.setTotalEarning(totalEarning);
+                                        List<EmployeeAdvance> advances = advanceRepository
+                                                        .findByOwnerIdAndEmployeeIdAndPaymentDateBetween(
+                                                                        ownerId,
+                                                                        employee.getId(),
+                                                                        startDate,
+                                                                        endDate);
 
-                        detail.setTotalAdvance(safeCurrentMonthAdvance);
+                                        BigDecimal currentMonthAdvance = BigDecimal.ZERO;
 
-                        detail.setPreviousBalance(previousMonthBalance);
+                                        if (advances != null) {
 
-                        detail.setExtraMoney(BigDecimal.ZERO);
+                                                for (EmployeeAdvance a : advances) {
 
-                        detail.setNetPayable(netPayable);
+                                                        String note = a.getNote() != null
+                                                                        ? a.getNote().toLowerCase()
+                                                                        : "";
 
-                        detail.setAmountPaid(amountPaid);
+                                                        boolean isCarryForward = note.contains("carry-forward")
+                                                                        || note.startsWith(
+                                                                                        "previous month balance carry-forward");
 
-                        detail.setRemainingBalance(remainingBalance);
+                                                        if (!isCarryForward
+                                                                        && a.getAmount() != null) {
 
-                        List<EmployeeSettlement> empSpecificSettlements = filteredMonthSettlements.stream()
-                                        .filter(s -> s.getEmployee()
-                                                        .getId()
-                                                        .equals(employee.getId()))
-                                        .collect(Collectors.toList());
+                                                                currentMonthAdvance = currentMonthAdvance.add(
+                                                                                BigDecimal.valueOf(
+                                                                                                a.getAmount()));
+                                                        }
+                                                }
+                                        }
 
-                        detail.setSettlements(empSpecificSettlements);
+                                        BigDecimal rate = employee.getInitialRate() != null
+                                                        ? employee.getInitialRate()
+                                                        : BigDecimal.ZERO;
 
-                        String carryForwardNote = "Previous month balance carry-forward from "
-                                        + month
-                                        + "/"
-                                        + year;
+                                        BigDecimal totalEarning = totalPresences.multiply(rate);
 
-                        List<EmployeeAdvance> existingNextMonthAdvances = advanceRepository
-                                        .findByOwnerIdAndEmployeeIdAndPaymentDateBetween(
-                                                        ownerId,
+                                        BigDecimal previousMonthBalance = prevRemainingBalanceMap.getOrDefault(
                                                         employee.getId(),
-                                                        nextMonthFirstDay,
-                                                        nextMonthFirstDay);
+                                                        BigDecimal.ZERO);
 
-                        EmployeeAdvance existingCarryForward = existingNextMonthAdvances.stream()
-                                        .filter(a -> a.getNote() != null
-                                                        && a.getNote().startsWith(
-                                                                        "Previous month balance carry-forward"))
-                                        .findFirst()
-                                        .orElse(null);
+                                        BigDecimal safeCurrentMonthAdvance = currentMonthAdvance != null
+                                                        ? currentMonthAdvance
+                                                        : BigDecimal.ZERO;
 
-                        if (remainingBalance.compareTo(
-                                        BigDecimal.ZERO) != 0) {
+                                        BigDecimal netPayable = totalEarning
+                                                        .subtract(safeCurrentMonthAdvance)
+                                                        .add(previousMonthBalance);
 
-                                if (existingCarryForward == null) {
+                                        BigDecimal amountPaid = paidAmountMap.getOrDefault(
+                                                        employee.getId(),
+                                                        BigDecimal.ZERO);
 
-                                        EmployeeAdvance carryForwardAdvance = new EmployeeAdvance();
+                                        BigDecimal remainingBalance = netPayable.subtract(amountPaid);
 
-                                        carryForwardAdvance.setEmployee(employee);
+                                        if (remainingBalance.compareTo(BigDecimal.ZERO) > 0) {
 
-                                        carryForwardAdvance.setOwner(owner);
+                                                totalPayable = totalPayable.add(remainingBalance);
 
-                                        carryForwardAdvance.setAmount(
-                                                        remainingBalance.doubleValue());
+                                        } else if (remainingBalance.compareTo(BigDecimal.ZERO) < 0) {
 
-                                        carryForwardAdvance.setPaymentDate(
-                                                        nextMonthFirstDay);
+                                                totalOverAdvance = totalOverAdvance.add(
+                                                                remainingBalance.abs());
+                                        }
 
-                                        carryForwardAdvance.setNote(
-                                                        carryForwardNote
-                                                                        + (remainingBalance.compareTo(
-                                                                                        BigDecimal.ZERO) < 0
-                                                                                                        ? " (Due)"
-                                                                                                        : " (Extra Credit)"));
+                                        HisabDetail detail = existingDetailsMap.getOrDefault(
+                                                        employee.getId(),
+                                                        new HisabDetail());
 
-                                        advanceRepository.save(
-                                                        carryForwardAdvance);
+                                        detail.setMonthClosing(hisabRecord);
+
+                                        detail.setEmployee(employee);
+
+                                        detail.setEmployeeName(employee.getName());
+
+                                        detail.setTotalPresences(totalPresences);
+
+                                        detail.setRate(rate);
+
+                                        detail.setTotalEarning(totalEarning);
+
+                                        detail.setTotalAdvance(safeCurrentMonthAdvance);
+
+                                        detail.setPreviousBalance(previousMonthBalance);
+
+                                        detail.setExtraMoney(BigDecimal.ZERO);
+
+                                        detail.setNetPayable(netPayable);
+
+                                        detail.setAmountPaid(amountPaid);
+
+                                        detail.setRemainingBalance(remainingBalance);
+
+                                        List<EmployeeSettlement> empSpecificSettlements = filteredMonthSettlements
+                                                        .stream()
+                                                        .filter(s -> s.getEmployee()
+                                                                        .getId()
+                                                                        .equals(employee.getId()))
+                                                        .collect(Collectors.toList());
+
+                                        detail.setSettlements(empSpecificSettlements);
+
+                                        String carryForwardNote = "Previous month balance carry-forward from "
+                                                        + month
+                                                        + "/"
+                                                        + year;
+
+                                        List<EmployeeAdvance> existingNextMonthAdvances = advanceRepository
+                                                        .findByOwnerIdAndEmployeeIdAndPaymentDateBetween(
+                                                                        ownerId,
+                                                                        employee.getId(),
+                                                                        nextMonthFirstDay,
+                                                                        nextMonthFirstDay);
+
+                                        EmployeeAdvance existingCarryForward = existingNextMonthAdvances.stream()
+                                                        .filter(a -> a.getNote() != null
+                                                                        && a.getNote().startsWith(
+                                                                                        "Previous month balance carry-forward"))
+                                                        .findFirst()
+                                                        .orElse(null);
+
+                                        if (remainingBalance.compareTo(
+                                                        BigDecimal.ZERO) != 0) {
+
+                                                if (existingCarryForward == null) {
+
+                                                        EmployeeAdvance carryForwardAdvance = new EmployeeAdvance();
+
+                                                        carryForwardAdvance.setEmployee(employee);
+
+                                                        carryForwardAdvance.setOwner(owner);
+
+                                                        carryForwardAdvance.setAmount(
+                                                                        remainingBalance.doubleValue());
+
+                                                        carryForwardAdvance.setPaymentDate(
+                                                                        nextMonthFirstDay);
+
+                                                        carryForwardAdvance.setNote(
+                                                                        carryForwardNote
+                                                                                        + (remainingBalance.compareTo(
+                                                                                                        BigDecimal.ZERO) < 0
+                                                                                                                        ? " (Due)"
+                                                                                                                        : " (Extra Credit)"));
+
+                                                        advanceRepository.save(
+                                                                        carryForwardAdvance);
+
+                                                        carryForwardCreatedCount++;
+                                                        carryForwardCreated.increment();
+
+                                                } else {
+
+                                                        existingCarryForward.setOwner(owner);
+
+                                                        existingCarryForward.setAmount(
+                                                                        remainingBalance.doubleValue());
+
+                                                        existingCarryForward.setNote(
+                                                                        carryForwardNote
+                                                                                        + (remainingBalance.compareTo(
+                                                                                                        BigDecimal.ZERO) < 0
+                                                                                                                        ? " (Due)"
+                                                                                                                        : " (Extra Credit)"));
+
+                                                        advanceRepository.save(
+                                                                        existingCarryForward);
+
+                                                        carryForwardUpdatedCount++;
+                                                        carryForwardUpdated.increment();
+                                                }
+
+                                        } else {
+
+                                                if (existingCarryForward != null) {
+
+                                                        advanceRepository.deleteByIdAndOwnerId(
+                                                                        existingCarryForward.getId(),
+                                                                        ownerId);
+
+                                                        carryForwardDeletedCount++;
+                                                        carryForwardDeleted.increment();
+                                                }
+                                        }
+
+                                        newDetailsList.add(detail);
+                                }
+
+                                hisabRecord.setTotalEmployees(
+                                                (long) activeEmployees.size());
+
+                                hisabRecord.setTotalPayable(
+                                                totalPayable.setScale(
+                                                                2,
+                                                                RoundingMode.HALF_UP));
+
+                                hisabRecord.setTotalOverAdvance(
+                                                totalOverAdvance.setScale(
+                                                                2,
+                                                                RoundingMode.HALF_UP));
+
+                                if (hisabRecord.getDetails() == null) {
+
+                                        hisabRecord.setDetails(
+                                                        new ArrayList<>());
 
                                 } else {
 
-                                        existingCarryForward.setOwner(owner);
-
-                                        existingCarryForward.setAmount(
-                                                        remainingBalance.doubleValue());
-
-                                        existingCarryForward.setNote(
-                                                        carryForwardNote
-                                                                        + (remainingBalance.compareTo(
-                                                                                        BigDecimal.ZERO) < 0
-                                                                                                        ? " (Due)"
-                                                                                                        : " (Extra Credit)"));
-
-                                        advanceRepository.save(
-                                                        existingCarryForward);
+                                        hisabRecord.getDetails().clear();
                                 }
 
-                        } else {
+                                for (HisabDetail detail : newDetailsList) {
 
-                                if (existingCarryForward != null) {
+                                        hisabRecord.getDetails().add(detail);
 
-                                        advanceRepository.deleteByIdAndOwnerId(
-                                                        existingCarryForward.getId(),
-                                                        ownerId);
+                                        detail.setMonthClosing(hisabRecord);
                                 }
+
+                                Hisab savedHisab = hisabRepository.save(hisabRecord);
+
+                                reportGenerationSuccess.increment();
+
+                                logger.info(
+                                                "Month closing completed: ownerId={}, year={}, month={}, employees={}, carryForwardCreated={}, carryForwardUpdated={}, carryForwardDeleted={}",
+                                                ownerId,
+                                                year,
+                                                month,
+                                                activeEmployees.size(),
+                                                carryForwardCreatedCount,
+                                                carryForwardUpdatedCount,
+                                                carryForwardDeletedCount);
+
+                                logger.debug(
+                                                "Month closing financial summary: ownerId={}, totalPayable={}, totalOverAdvance={}",
+                                                ownerId,
+                                                totalPayable,
+                                                totalOverAdvance);
+
+                                return savedHisab;
+
+                        } catch (RuntimeException ex) {
+
+                                reportGenerationFailure.increment();
+
+                                logger.error(
+                                                "Month report generation failed: ownerId={}, year={}, month={}, exception={}",
+                                                ownerId,
+                                                year,
+                                                month,
+                                                ex.getClass().getSimpleName(),
+                                                ex);
+
+                                throw ex;
                         }
-
-                        newDetailsList.add(detail);
-                }
-
-                hisabRecord.setTotalEmployees(
-                                (long) activeEmployees.size());
-
-                hisabRecord.setTotalPayable(
-                                totalPayable.setScale(
-                                                2,
-                                                RoundingMode.HALF_UP));
-
-                hisabRecord.setTotalOverAdvance(
-                                totalOverAdvance.setScale(
-                                                2,
-                                                RoundingMode.HALF_UP));
-
-                if (hisabRecord.getDetails() == null) {
-
-                        hisabRecord.setDetails(
-                                        new ArrayList<>());
-
-                } else {
-
-                        hisabRecord.getDetails().clear();
-                }
-
-                for (HisabDetail detail : newDetailsList) {
-
-                        hisabRecord.getDetails().add(detail);
-
-                        detail.setMonthClosing(hisabRecord);
-                }
-
-                Hisab savedHisab = hisabRepository.save(hisabRecord);
-
-                logger.info(
-                                "Month Closing Summary - Owner: {}, Employees: {}, Payable: {}, Over Advance: {}",
-                                ownerId,
-                                activeEmployees.size(),
-                                totalPayable,
-                                totalOverAdvance);
-
-                logger.info(
-                                "=== Successfully completed Month Report Generation for Owner: {}, Year: {}, Month: {} ===",
-                                ownerId,
-                                year,
-                                month);
-
-                return savedHisab;
+                });
         }
 
         @Override
@@ -458,70 +584,137 @@ public class HisabServiceImpl implements HisabService {
                         Long detailId,
                         boolean completed) {
 
-                Long ownerId = currentOwnerService.getCurrentOwnerId();
+                return completionUpdateTimer.record(() -> {
 
-                logger.info(
-                                "Toggling hisab completion status for Owner: {}, DetailId: {} to {}",
-                                ownerId,
-                                detailId,
-                                completed);
+                        Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-                HisabDetail detail = hisabDetailRepository
-                                .findByIdAndOwnerId(
+                        logger.info(
+                                        "Toggling hisab completion status: ownerId={}, detailId={}, completed={}",
+                                        ownerId,
+                                        detailId,
+                                        completed);
+
+                        try {
+
+                                HisabDetail detail = hisabDetailRepository
+                                                .findByIdAndOwnerId(
+                                                                detailId,
+                                                                ownerId)
+                                                .orElseThrow(() -> {
+
+                                                        completionNotFound.increment();
+
+                                                        logger.warn(
+                                                                        "Hisab detail not found: ownerId={}, detailId={}",
+                                                                        ownerId,
+                                                                        detailId);
+
+                                                        return new ResourceNotFoundException(
+                                                                        "Hisab detail not found with id: "
+                                                                                        + detailId);
+                                                });
+
+                                detail.setHisabCompleted(completed);
+
+                                HisabDetail savedDetail = hisabDetailRepository.save(detail);
+
+                                completionUpdate.increment();
+
+                                logger.info(
+                                                "Hisab completion status updated: ownerId={}, detailId={}, completed={}",
+                                                ownerId,
                                                 detailId,
-                                                ownerId)
-                                .orElseThrow(() -> {
+                                                completed);
 
-                                        logger.warn(
-                                                        "Hisab detail not found for Owner: {}, DetailId: {}",
-                                                        ownerId,
-                                                        detailId);
+                                return savedDetail;
 
-                                        return new ResourceNotFoundException(
-                                                        "Hisab detail not found with id: "
-                                                                        + detailId);
-                                });
+                        } catch (RuntimeException ex) {
 
-                detail.setHisabCompleted(completed);
+                                logger.error(
+                                                "Failed to update Hisab completion status: ownerId={}, detailId={}, exception={}",
+                                                ownerId,
+                                                detailId,
+                                                ex.getClass().getSimpleName(),
+                                                ex);
 
-                return hisabDetailRepository.save(detail);
+                                throw ex;
+                        }
+                });
         }
 
         @Override
         public List<Hisab> getAllMonthClosings() {
 
-                Long ownerId = currentOwnerService.getCurrentOwnerId();
+                return listTimer.record(() -> {
 
-                logger.info(
-                                "Fetching month closing records for Owner: {}",
-                                ownerId);
+                        Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-                return hisabRepository.findAllByOwnerId(ownerId);
+                        logger.info(
+                                        "Fetching month closing records: ownerId={}",
+                                        ownerId);
+
+                        List<Hisab> monthClosings = hisabRepository.findAllByOwnerId(ownerId);
+
+                        logger.info(
+                                        "Month closing records fetched: ownerId={}, count={}",
+                                        ownerId,
+                                        monthClosings.size());
+
+                        return monthClosings;
+                });
         }
 
         @Override
         public Hisab getMonthClosingById(Long id) {
 
-                Long ownerId = currentOwnerService.getCurrentOwnerId();
+                return lookupTimer.record(() -> {
 
-                logger.info(
-                                "Fetching month closing by ID: {} for Owner: {}",
-                                id,
-                                ownerId);
+                        Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-                return hisabRepository
-                                .findByIdAndOwnerId(id, ownerId)
-                                .orElseThrow(() -> {
+                        logger.info(
+                                        "Fetching month closing: ownerId={}, id={}",
+                                        ownerId,
+                                        id);
 
-                                        logger.warn(
-                                                        "Hisab record not found for Owner: {}, ID: {}",
-                                                        ownerId,
-                                                        id);
+                        try {
 
-                                        return new ResourceNotFoundException(
-                                                        "Hisab record not found with id: "
-                                                                        + id);
-                                });
+                                Hisab hisab = hisabRepository
+                                                .findByIdAndOwnerId(id, ownerId)
+                                                .orElseThrow(() -> {
+
+                                                        lookupNotFound.increment();
+
+                                                        logger.warn(
+                                                                        "Hisab record not found: ownerId={}, id={}",
+                                                                        ownerId,
+                                                                        id);
+
+                                                        return new ResourceNotFoundException(
+                                                                        "Hisab record not found with id: "
+                                                                                        + id);
+                                                });
+
+                                lookupSuccess.increment();
+
+                                logger.info(
+                                                "Hisab record fetched successfully: ownerId={}, id={}",
+                                                ownerId,
+                                                id);
+
+                                return hisab;
+
+                        } catch (RuntimeException ex) {
+
+                                logger.error(
+                                                "Failed to fetch Hisab record: ownerId={}, id={}, exception={}",
+                                                ownerId,
+                                                id,
+                                                ex.getClass().getSimpleName(),
+                                                ex);
+
+                                throw ex;
+                        }
+                });
         }
 
         @Override
@@ -529,6 +722,11 @@ public class HisabServiceImpl implements HisabService {
         public Hisab getMonthClosingByYearAndMonth(
                         int year,
                         int month) {
+
+                logger.info(
+                                "Fetching month closing by period: year={}, month={}",
+                                year,
+                                month);
 
                 return generateMonthReport(
                                 year,

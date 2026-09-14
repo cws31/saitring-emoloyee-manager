@@ -14,6 +14,12 @@ import com.sonuSaitring.sonuSaitringManagement.sattlement.entity.EmployeeSettlem
 import com.sonuSaitring.sonuSaitringManagement.sattlement.repository.EmployeeSettlementRepository;
 import com.sonuSaitring.sonuSaitringManagement.security.CurrentOwnerService;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +34,8 @@ import java.util.Map;
 @Transactional(readOnly = true)
 public class DashboardServiceImpl implements DashboardService {
 
+        private static final Logger logger = LoggerFactory.getLogger(DashboardServiceImpl.class);
+
         private static final BigDecimal ZERO = BigDecimal.ZERO;
         private static final BigDecimal HALF_DAY = new BigDecimal("0.5");
 
@@ -38,13 +46,23 @@ public class DashboardServiceImpl implements DashboardService {
         private final HisabRepository hisabRepository;
         private final CurrentOwnerService currentOwnerService;
 
+        private final Counter dashboardSuccess;
+        private final Counter dashboardFailure;
+
+        private final Timer dashboardTimer;
+        private final Timer earningsTimer;
+        private final Timer advancesTimer;
+        private final Timer settlementsTimer;
+        private final Timer previousBalancesTimer;
+
         public DashboardServiceImpl(
                         EmployeeRepository employeeRepository,
                         AttendanceRepository attendanceRepository,
                         EmployeeAdvanceRepository advanceRepository,
                         EmployeeSettlementRepository settlementRepository,
                         HisabRepository hisabRepository,
-                        CurrentOwnerService currentOwnerService) {
+                        CurrentOwnerService currentOwnerService,
+                        MeterRegistry meterRegistry) {
 
                 this.employeeRepository = employeeRepository;
                 this.attendanceRepository = attendanceRepository;
@@ -52,108 +70,188 @@ public class DashboardServiceImpl implements DashboardService {
                 this.settlementRepository = settlementRepository;
                 this.hisabRepository = hisabRepository;
                 this.currentOwnerService = currentOwnerService;
+
+                this.dashboardSuccess = Counter.builder("dashboard.request")
+                                .tag("result", "success")
+                                .description("Number of successful dashboard requests")
+                                .register(meterRegistry);
+
+                this.dashboardFailure = Counter.builder("dashboard.request")
+                                .tag("result", "failure")
+                                .description("Number of failed dashboard requests")
+                                .register(meterRegistry);
+
+                this.dashboardTimer = Timer.builder("dashboard.request.duration")
+                                .description("Time taken to generate dashboard data")
+                                .register(meterRegistry);
+
+                this.earningsTimer = Timer.builder("dashboard.earnings.duration")
+                                .description("Time taken to calculate dashboard earnings")
+                                .register(meterRegistry);
+
+                this.advancesTimer = Timer.builder("dashboard.advances.duration")
+                                .description("Time taken to calculate dashboard advances")
+                                .register(meterRegistry);
+
+                this.settlementsTimer = Timer.builder("dashboard.settlements.duration")
+                                .description("Time taken to calculate dashboard settlements")
+                                .register(meterRegistry);
+
+                this.previousBalancesTimer = Timer.builder("dashboard.previous_balances.duration")
+                                .description("Time taken to retrieve previous dashboard balances")
+                                .register(meterRegistry);
         }
 
         @Override
         public DashboardResponse getDashboard(int year, int month) {
 
-                validatePeriod(year, month);
+                return dashboardTimer.record(() -> {
 
-                Long ownerId = currentOwnerService.getCurrentOwnerId();
+                        validatePeriod(year, month);
 
-                LocalDate startDate = LocalDate.of(year, month, 1);
+                        Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-                LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
+                        logger.info(
+                                        "Generating dashboard: ownerId={}, year={}, month={}",
+                                        ownerId,
+                                        year,
+                                        month);
 
-                LocalDate today = LocalDate.now();
+                        try {
 
-                if (year == today.getYear()
-                                && month == today.getMonthValue()) {
+                                LocalDate startDate = LocalDate.of(year, month, 1);
 
-                        endDate = today;
-                }
+                                LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
 
-                List<Employee> employees = employeeRepository.findAllByOwnerId(ownerId);
+                                LocalDate today = LocalDate.now();
 
-                long totalActiveEmployees = employees.stream()
-                                .filter(employee -> !employee.isBlocked())
-                                .count();
+                                if (year == today.getYear()
+                                                && month == today.getMonthValue()) {
 
-                Map<Long, BigDecimal> earningsMap = calculateEarnings(
-                                ownerId,
-                                employees,
-                                startDate,
-                                endDate);
+                                        endDate = today;
+                                }
 
-                Map<Long, BigDecimal> advanceMap = calculateAdvances(
-                                ownerId,
-                                employees,
-                                startDate,
-                                endDate);
+                                List<Employee> employees = employeeRepository.findAllByOwnerId(ownerId);
 
-                Map<Long, BigDecimal> paidMap = calculateSettlements(
-                                ownerId,
-                                employees,
-                                startDate,
-                                endDate);
+                                long totalActiveEmployees = employees.stream()
+                                                .filter(employee -> !employee.isBlocked())
+                                                .count();
 
-                Map<Long, BigDecimal> previousBalanceMap = getPreviousBalances(
-                                ownerId,
-                                year,
-                                month);
+                                logger.debug(
+                                                "Dashboard employees loaded: ownerId={}, total={}, active={}",
+                                                ownerId,
+                                                employees.size(),
+                                                totalActiveEmployees);
 
-                BigDecimal totalPayable = ZERO;
-                BigDecimal totalAdvance = ZERO;
-                BigDecimal totalOverAdvance = ZERO;
+                                Map<Long, BigDecimal> earningsMap = calculateEarnings(
+                                                ownerId,
+                                                employees,
+                                                startDate,
+                                                endDate);
 
-                for (Employee employee : employees) {
+                                Map<Long, BigDecimal> advanceMap = calculateAdvances(
+                                                ownerId,
+                                                employees,
+                                                startDate,
+                                                endDate);
 
-                        if (employee.isBlocked()) {
-                                continue;
+                                Map<Long, BigDecimal> paidMap = calculateSettlements(
+                                                ownerId,
+                                                employees,
+                                                startDate,
+                                                endDate);
+
+                                Map<Long, BigDecimal> previousBalanceMap = getPreviousBalances(
+                                                ownerId,
+                                                year,
+                                                month);
+
+                                BigDecimal totalPayable = ZERO;
+                                BigDecimal totalAdvance = ZERO;
+                                BigDecimal totalOverAdvance = ZERO;
+
+                                for (Employee employee : employees) {
+
+                                        if (employee.isBlocked()) {
+                                                continue;
+                                        }
+
+                                        Long employeeId = employee.getId();
+
+                                        BigDecimal earnings = earningsMap.getOrDefault(
+                                                        employeeId,
+                                                        ZERO);
+
+                                        BigDecimal advance = advanceMap.getOrDefault(
+                                                        employeeId,
+                                                        ZERO);
+
+                                        BigDecimal previousBalance = previousBalanceMap.getOrDefault(
+                                                        employeeId,
+                                                        ZERO);
+
+                                        BigDecimal amountPaid = paidMap.getOrDefault(
+                                                        employeeId,
+                                                        ZERO);
+
+                                        BigDecimal payable = earnings
+                                                        .subtract(advance)
+                                                        .add(previousBalance);
+
+                                        BigDecimal due = payable.subtract(amountPaid);
+
+                                        if (due.compareTo(ZERO) > 0) {
+
+                                                totalPayable = totalPayable.add(due);
+                                        }
+
+                                        if (due.compareTo(ZERO) < 0) {
+
+                                                totalOverAdvance = totalOverAdvance.add(due.abs());
+                                        }
+
+                                        totalAdvance = totalAdvance.add(advance);
+                                }
+
+                                DashboardResponse response = new DashboardResponse(
+                                                totalActiveEmployees,
+                                                money(totalPayable),
+                                                money(totalAdvance),
+                                                money(totalOverAdvance));
+
+                                dashboardSuccess.increment();
+
+                                logger.info(
+                                                "Dashboard generated successfully: ownerId={}, year={}, month={}, activeEmployees={}",
+                                                ownerId,
+                                                year,
+                                                month,
+                                                totalActiveEmployees);
+
+                                logger.debug(
+                                                "Dashboard financial summary: ownerId={}, totalPayable={}, totalAdvance={}, totalOverAdvance={}",
+                                                ownerId,
+                                                totalPayable,
+                                                totalAdvance,
+                                                totalOverAdvance);
+
+                                return response;
+
+                        } catch (RuntimeException ex) {
+
+                                dashboardFailure.increment();
+
+                                logger.error(
+                                                "Dashboard generation failed: ownerId={}, year={}, month={}, exception={}",
+                                                ownerId,
+                                                year,
+                                                month,
+                                                ex.getClass().getSimpleName(),
+                                                ex);
+
+                                throw ex;
                         }
-
-                        Long employeeId = employee.getId();
-
-                        BigDecimal earnings = earningsMap.getOrDefault(
-                                        employeeId,
-                                        ZERO);
-
-                        BigDecimal advance = advanceMap.getOrDefault(
-                                        employeeId,
-                                        ZERO);
-
-                        BigDecimal previousBalance = previousBalanceMap.getOrDefault(
-                                        employeeId,
-                                        ZERO);
-
-                        BigDecimal amountPaid = paidMap.getOrDefault(
-                                        employeeId,
-                                        ZERO);
-
-                        BigDecimal payable = earnings
-                                        .subtract(advance)
-                                        .add(previousBalance);
-
-                        BigDecimal due = payable.subtract(amountPaid);
-
-                        if (due.compareTo(ZERO) > 0) {
-
-                                totalPayable = totalPayable.add(due);
-                        }
-
-                        if (due.compareTo(ZERO) < 0) {
-
-                                totalOverAdvance = totalOverAdvance.add(due.abs());
-                        }
-
-                        totalAdvance = totalAdvance.add(advance);
-                }
-
-                return new DashboardResponse(
-                                totalActiveEmployees,
-                                money(totalPayable),
-                                money(totalAdvance),
-                                money(totalOverAdvance));
+                });
         }
 
         private Map<Long, BigDecimal> calculateEarnings(
@@ -162,45 +260,53 @@ public class DashboardServiceImpl implements DashboardService {
                         LocalDate startDate,
                         LocalDate endDate) {
 
-                Map<Long, BigDecimal> earningsMap = new HashMap<>();
+                return earningsTimer.record(() -> {
 
-                List<Attendance> attendances = attendanceRepository.findAllByOwnerIdAndMonth(
-                                ownerId,
-                                startDate,
-                                endDate);
+                        Map<Long, BigDecimal> earningsMap = new HashMap<>();
 
-                for (Attendance attendance : attendances) {
+                        List<Attendance> attendances = attendanceRepository.findAllByOwnerIdAndMonth(
+                                        ownerId,
+                                        startDate,
+                                        endDate);
 
-                        Employee employee = attendance.getEmployee();
+                        logger.debug(
+                                        "Dashboard attendance data loaded: ownerId={}, count={}",
+                                        ownerId,
+                                        attendances.size());
 
-                        if (employee == null
-                                        || employee.isBlocked()) {
+                        for (Attendance attendance : attendances) {
 
-                                continue;
+                                Employee employee = attendance.getEmployee();
+
+                                if (employee == null
+                                                || employee.isBlocked()) {
+
+                                        continue;
+                                }
+
+                                BigDecimal presenceValue = ZERO;
+
+                                if (attendance.getStatus() == Attendance.AttendanceStatus.PRESENT) {
+
+                                        presenceValue = BigDecimal.ONE;
+
+                                } else if (attendance.getStatus() == Attendance.AttendanceStatus.HALF_DAY) {
+
+                                        presenceValue = HALF_DAY;
+                                }
+
+                                BigDecimal rate = safe(employee.getInitialRate());
+
+                                BigDecimal earning = presenceValue.multiply(rate);
+
+                                earningsMap.merge(
+                                                employee.getId(),
+                                                earning,
+                                                BigDecimal::add);
                         }
 
-                        BigDecimal presenceValue = ZERO;
-
-                        if (attendance.getStatus() == Attendance.AttendanceStatus.PRESENT) {
-
-                                presenceValue = BigDecimal.ONE;
-
-                        } else if (attendance.getStatus() == Attendance.AttendanceStatus.HALF_DAY) {
-
-                                presenceValue = HALF_DAY;
-                        }
-
-                        BigDecimal rate = safe(employee.getInitialRate());
-
-                        BigDecimal earning = presenceValue.multiply(rate);
-
-                        earningsMap.merge(
-                                        employee.getId(),
-                                        earning,
-                                        BigDecimal::add);
-                }
-
-                return earningsMap;
+                        return earningsMap;
+                });
         }
 
         private Map<Long, BigDecimal> calculateAdvances(
@@ -209,47 +315,55 @@ public class DashboardServiceImpl implements DashboardService {
                         LocalDate startDate,
                         LocalDate endDate) {
 
-                Map<Long, BigDecimal> advanceMap = new HashMap<>();
+                return advancesTimer.record(() -> {
 
-                List<EmployeeAdvance> advances = advanceRepository
-                                .findByOwnerIdAndPaymentDateBetween(
-                                                ownerId,
-                                                startDate,
-                                                endDate);
+                        Map<Long, BigDecimal> advanceMap = new HashMap<>();
 
-                for (EmployeeAdvance advance : advances) {
+                        List<EmployeeAdvance> advances = advanceRepository
+                                        .findByOwnerIdAndPaymentDateBetween(
+                                                        ownerId,
+                                                        startDate,
+                                                        endDate);
 
-                        Employee employee = advance.getEmployee();
+                        logger.debug(
+                                        "Dashboard advance data loaded: ownerId={}, count={}",
+                                        ownerId,
+                                        advances.size());
 
-                        if (employee == null
-                                        || employee.isBlocked()
-                                        || advance.getAmount() == null) {
+                        for (EmployeeAdvance advance : advances) {
 
-                                continue;
+                                Employee employee = advance.getEmployee();
+
+                                if (employee == null
+                                                || employee.isBlocked()
+                                                || advance.getAmount() == null) {
+
+                                        continue;
+                                }
+
+                                String note = advance.getNote() == null
+                                                ? ""
+                                                : advance.getNote()
+                                                                .toLowerCase();
+
+                                if (note.contains("carry-forward")
+                                                || note.startsWith(
+                                                                "previous month balance carry-forward")) {
+
+                                        continue;
+                                }
+
+                                BigDecimal amount = BigDecimal.valueOf(
+                                                advance.getAmount());
+
+                                advanceMap.merge(
+                                                employee.getId(),
+                                                amount,
+                                                BigDecimal::add);
                         }
 
-                        String note = advance.getNote() == null
-                                        ? ""
-                                        : advance.getNote()
-                                                        .toLowerCase();
-
-                        if (note.contains("carry-forward")
-                                        || note.startsWith(
-                                                        "previous month balance carry-forward")) {
-
-                                continue;
-                        }
-
-                        BigDecimal amount = BigDecimal.valueOf(
-                                        advance.getAmount());
-
-                        advanceMap.merge(
-                                        employee.getId(),
-                                        amount,
-                                        BigDecimal::add);
-                }
-
-                return advanceMap;
+                        return advanceMap;
+                });
         }
 
         private Map<Long, BigDecimal> calculateSettlements(
@@ -258,32 +372,40 @@ public class DashboardServiceImpl implements DashboardService {
                         LocalDate startDate,
                         LocalDate endDate) {
 
-                Map<Long, BigDecimal> paidMap = new HashMap<>();
+                return settlementsTimer.record(() -> {
 
-                List<EmployeeSettlement> settlements = settlementRepository
-                                .findByOwnerIdAndSettlementDateBetween(
-                                                ownerId,
-                                                startDate,
-                                                endDate);
+                        Map<Long, BigDecimal> paidMap = new HashMap<>();
 
-                for (EmployeeSettlement settlement : settlements) {
+                        List<EmployeeSettlement> settlements = settlementRepository
+                                        .findByOwnerIdAndSettlementDateBetween(
+                                                        ownerId,
+                                                        startDate,
+                                                        endDate);
 
-                        Employee employee = settlement.getEmployee();
+                        logger.debug(
+                                        "Dashboard settlement data loaded: ownerId={}, count={}",
+                                        ownerId,
+                                        settlements.size());
 
-                        if (employee == null
-                                        || employee.isBlocked()
-                                        || settlement.getAmountPaid() == null) {
+                        for (EmployeeSettlement settlement : settlements) {
 
-                                continue;
+                                Employee employee = settlement.getEmployee();
+
+                                if (employee == null
+                                                || employee.isBlocked()
+                                                || settlement.getAmountPaid() == null) {
+
+                                        continue;
+                                }
+
+                                paidMap.merge(
+                                                employee.getId(),
+                                                settlement.getAmountPaid(),
+                                                BigDecimal::add);
                         }
 
-                        paidMap.merge(
-                                        employee.getId(),
-                                        settlement.getAmountPaid(),
-                                        BigDecimal::add);
-                }
-
-                return paidMap;
+                        return paidMap;
+                });
         }
 
         private Map<Long, BigDecimal> getPreviousBalances(
@@ -291,42 +413,45 @@ public class DashboardServiceImpl implements DashboardService {
                         int year,
                         int month) {
 
-                LocalDate current = LocalDate.of(year, month, 1);
+                return previousBalancesTimer.record(() -> {
 
-                LocalDate previous = current.minusMonths(1);
+                        LocalDate current = LocalDate.of(year, month, 1);
 
-                Hisab previousHisab = hisabRepository
-                                .findByOwnerIdAndYearAndMonth(
-                                                ownerId,
-                                                previous.getYear(),
-                                                previous.getMonthValue())
-                                .orElse(null);
+                        LocalDate previous = current.minusMonths(1);
 
-                if (previousHisab == null
-                                || previousHisab.getDetails() == null) {
+                        Hisab previousHisab = hisabRepository
+                                        .findByOwnerIdAndYearAndMonth(
+                                                        ownerId,
+                                                        previous.getYear(),
+                                                        previous.getMonthValue())
+                                        .orElse(null);
 
-                        return Map.of();
-                }
+                        if (previousHisab == null
+                                        || previousHisab.getDetails() == null) {
 
-                Map<Long, BigDecimal> balances = new HashMap<>();
-
-                for (HisabDetail detail : previousHisab.getDetails()) {
-
-                        Employee employee = detail.getEmployee();
-
-                        if (employee == null
-                                        || employee.isBlocked()
-                                        || detail.getRemainingBalance() == null) {
-
-                                continue;
+                                return Map.of();
                         }
 
-                        balances.put(
-                                        employee.getId(),
-                                        detail.getRemainingBalance());
-                }
+                        Map<Long, BigDecimal> balances = new HashMap<>();
 
-                return balances;
+                        for (HisabDetail detail : previousHisab.getDetails()) {
+
+                                Employee employee = detail.getEmployee();
+
+                                if (employee == null
+                                                || employee.isBlocked()
+                                                || detail.getRemainingBalance() == null) {
+
+                                        continue;
+                                }
+
+                                balances.put(
+                                                employee.getId(),
+                                                detail.getRemainingBalance());
+                        }
+
+                        return balances;
+                });
         }
 
         private static BigDecimal safe(

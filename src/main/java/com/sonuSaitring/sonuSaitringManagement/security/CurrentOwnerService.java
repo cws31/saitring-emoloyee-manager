@@ -1,5 +1,7 @@
 package com.sonuSaitring.sonuSaitringManagement.security;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -8,40 +10,96 @@ import com.sonuSaitring.sonuSaitringManagement.common.exception.ResourceNotFound
 import com.sonuSaitring.sonuSaitringManagement.owner.entity.Owner;
 import com.sonuSaitring.sonuSaitringManagement.owner.repository.OwnerRepository;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+
 @Service
 public class CurrentOwnerService {
 
-    private final OwnerRepository ownerRepository;
+        private static final Logger log = LoggerFactory.getLogger(CurrentOwnerService.class);
 
-    public CurrentOwnerService(
-            OwnerRepository ownerRepository) {
-        this.ownerRepository = ownerRepository;
-    }
+        private final OwnerRepository ownerRepository;
 
-    public Long getCurrentOwnerId() {
+        private final Counter authenticatedOwnerLookupCounter;
+        private final Counter ownerNotFoundCounter;
+        private final Counter unauthenticatedAccessCounter;
 
-        Authentication authentication = SecurityContextHolder
-                .getContext()
-                .getAuthentication();
+        public CurrentOwnerService(
+                        OwnerRepository ownerRepository,
+                        MeterRegistry meterRegistry) {
 
-        if (authentication == null ||
-                !authentication.isAuthenticated()) {
+                this.ownerRepository = ownerRepository;
 
-            throw new IllegalStateException(
-                    "No authenticated owner found.");
+                this.authenticatedOwnerLookupCounter = Counter.builder(
+                                "security.current_owner.lookup")
+                                .description("Number of current owner lookups")
+                                .register(meterRegistry);
+
+                this.ownerNotFoundCounter = Counter.builder(
+                                "security.current_owner.not_found")
+                                .description("Number of current owner lookups where owner was not found")
+                                .register(meterRegistry);
+
+                this.unauthenticatedAccessCounter = Counter.builder(
+                                "security.current_owner.unauthenticated")
+                                .description("Number of attempts to access current owner without authentication")
+                                .register(meterRegistry);
         }
 
-        return Long.parseLong(
-                authentication.getPrincipal().toString());
-    }
+        public Long getCurrentOwnerId() {
 
-    public Owner getCurrentOwner() {
+                Authentication authentication = SecurityContextHolder
+                                .getContext()
+                                .getAuthentication();
 
-        Long ownerId = getCurrentOwnerId();
+                if (authentication == null ||
+                                !authentication.isAuthenticated()) {
 
-        return ownerRepository
-                .findById(ownerId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Owner not found with id: " + ownerId));
-    }
+                        unauthenticatedAccessCounter.increment();
+
+                        log.warn("Attempt to access current owner without authentication");
+
+                        throw new IllegalStateException(
+                                        "No authenticated owner found.");
+                }
+
+                Long ownerId;
+
+                try {
+
+                        ownerId = Long.parseLong(
+                                        authentication.getPrincipal().toString());
+
+                } catch (NumberFormatException ex) {
+
+                        log.error(
+                                        "Authenticated principal contains invalid owner identifier");
+
+                        throw new IllegalStateException(
+                                        "Invalid authenticated owner.");
+                }
+
+                return ownerId;
+        }
+
+        public Owner getCurrentOwner() {
+
+                Long ownerId = getCurrentOwnerId();
+
+                authenticatedOwnerLookupCounter.increment();
+
+                return ownerRepository
+                                .findById(ownerId)
+                                .orElseThrow(() -> {
+
+                                        ownerNotFoundCounter.increment();
+
+                                        log.error(
+                                                        "Authenticated owner was not found ownerId={}",
+                                                        ownerId);
+
+                                        return new ResourceNotFoundException(
+                                                        "Owner not found with id: " + ownerId);
+                                });
+        }
 }

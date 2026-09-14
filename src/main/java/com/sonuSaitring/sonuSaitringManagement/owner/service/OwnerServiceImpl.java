@@ -2,7 +2,10 @@ package com.sonuSaitring.sonuSaitringManagement.owner.service;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.concurrent.TimeUnit;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,259 +24,549 @@ import com.sonuSaitring.sonuSaitringManagement.owner.repository.OwnerLoginOtpRep
 import com.sonuSaitring.sonuSaitringManagement.owner.repository.OwnerRepository;
 import com.sonuSaitring.sonuSaitringManagement.security.JwtService;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+
 @Service
 public class OwnerServiceImpl implements OwnerService {
 
-    private static final int OTP_EXPIRY_MINUTES = 5;
-    private static final int MAX_OTP_ATTEMPTS = 5;
+        private static final Logger log = LoggerFactory.getLogger(OwnerServiceImpl.class);
 
-    private final OwnerRepository ownerRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final FileStorageService fileStorageService;
-    private final JwtService jwtService;
-    private final OwnerLoginOtpRepository otpRepository;
-    private final BrevoEmailService brevoEmailService;
+        private static final int OTP_EXPIRY_MINUTES = 5;
+        private static final int MAX_OTP_ATTEMPTS = 5;
 
-    private final SecureRandom secureRandom = new SecureRandom();
+        private final OwnerRepository ownerRepository;
+        private final PasswordEncoder passwordEncoder;
+        private final FileStorageService fileStorageService;
+        private final JwtService jwtService;
+        private final OwnerLoginOtpRepository otpRepository;
+        private final BrevoEmailService brevoEmailService;
 
-    public OwnerServiceImpl(
-            OwnerRepository ownerRepository,
-            PasswordEncoder passwordEncoder,
-            FileStorageService fileStorageService,
-            JwtService jwtService,
-            OwnerLoginOtpRepository otpRepository,
-            BrevoEmailService brevoEmailService) {
+        private final SecureRandom secureRandom = new SecureRandom();
 
-        this.ownerRepository = ownerRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.fileStorageService = fileStorageService;
-        this.jwtService = jwtService;
-        this.otpRepository = otpRepository;
-        this.brevoEmailService = brevoEmailService;
-    }
+        private final Counter registrationSuccessCounter;
+        private final Counter registrationFailureCounter;
 
-  
+        private final Counter loginSuccessCounter;
+        private final Counter loginFailureCounter;
 
-    @Override
-    public OwnerRegistrationResponse register(
-            OwnerRegistrationRequest request,
-            MultipartFile logo) {
+        private final Counter otpCreatedCounter;
+        private final Counter otpSuccessCounter;
+        private final Counter otpInvalidCounter;
+        private final Counter otpExpiredCounter;
+        private final Counter otpMaxAttemptsCounter;
 
-        if (ownerRepository.existsByEmail(request.getEmail())) {
-            throw new ConflictException(
-                    "Email is already registered.");
+        private final Timer registrationTimer;
+        private final Timer loginTimer;
+        private final Timer otpVerificationTimer;
+
+        public OwnerServiceImpl(
+                        OwnerRepository ownerRepository,
+                        PasswordEncoder passwordEncoder,
+                        FileStorageService fileStorageService,
+                        JwtService jwtService,
+                        OwnerLoginOtpRepository otpRepository,
+                        BrevoEmailService brevoEmailService,
+                        MeterRegistry meterRegistry) {
+
+                this.ownerRepository = ownerRepository;
+                this.passwordEncoder = passwordEncoder;
+                this.fileStorageService = fileStorageService;
+                this.jwtService = jwtService;
+                this.otpRepository = otpRepository;
+                this.brevoEmailService = brevoEmailService;
+
+                this.registrationSuccessCounter = Counter.builder(
+                                "owner.registration.success")
+                                .description("Successful owner registrations")
+                                .register(meterRegistry);
+
+                this.registrationFailureCounter = Counter.builder(
+                                "owner.registration.failure")
+                                .description("Failed owner registrations")
+                                .register(meterRegistry);
+
+                this.loginSuccessCounter = Counter.builder(
+                                "owner.login.success")
+                                .description("Successful owner login flows")
+                                .register(meterRegistry);
+
+                this.loginFailureCounter = Counter.builder(
+                                "owner.login.failure")
+                                .description("Failed owner login attempts")
+                                .register(meterRegistry);
+
+                this.otpCreatedCounter = Counter.builder(
+                                "owner.otp.created")
+                                .description("Login OTPs created")
+                                .register(meterRegistry);
+
+                this.otpSuccessCounter = Counter.builder(
+                                "owner.otp.verification.success")
+                                .description("Successful OTP verifications")
+                                .register(meterRegistry);
+
+                this.otpInvalidCounter = Counter.builder(
+                                "owner.otp.verification.invalid")
+                                .description("Invalid OTP verification attempts")
+                                .register(meterRegistry);
+
+                this.otpExpiredCounter = Counter.builder(
+                                "owner.otp.verification.expired")
+                                .description("Expired OTP verification attempts")
+                                .register(meterRegistry);
+
+                this.otpMaxAttemptsCounter = Counter.builder(
+                                "owner.otp.verification.max_attempts")
+                                .description("OTP verifications blocked because maximum attempts were reached")
+                                .register(meterRegistry);
+
+                this.registrationTimer = Timer.builder(
+                                "owner.registration.duration")
+                                .description("Owner registration duration")
+                                .register(meterRegistry);
+
+                this.loginTimer = Timer.builder(
+                                "owner.login.duration")
+                                .description("Owner login duration")
+                                .register(meterRegistry);
+
+                this.otpVerificationTimer = Timer.builder(
+                                "owner.otp.verification.duration")
+                                .description("OTP verification duration")
+                                .register(meterRegistry);
         }
 
-        if (ownerRepository.existsByUsername(request.getUsername())) {
-            throw new ConflictException(
-                    "Username is already taken.");
+        @Override
+        public OwnerRegistrationResponse register(
+                        OwnerRegistrationRequest request,
+                        MultipartFile logo) {
+
+                long start = System.nanoTime();
+
+                String email = request.getEmail()
+                                .trim()
+                                .toLowerCase();
+
+                String username = request.getUsername()
+                                .trim();
+
+                log.info(
+                                "Owner registration started username={} email={}",
+                                username,
+                                maskEmail(email));
+
+                try {
+
+                        if (ownerRepository.existsByEmail(email)) {
+
+                                registrationFailureCounter.increment();
+
+                                log.warn(
+                                                "Owner registration rejected because email already exists email={}",
+                                                maskEmail(email));
+
+                                throw new ConflictException(
+                                                "Email is already registered.");
+                        }
+
+                        if (ownerRepository.existsByUsername(username)) {
+
+                                registrationFailureCounter.increment();
+
+                                log.warn(
+                                                "Owner registration rejected because username already exists username={}",
+                                                username);
+
+                                throw new ConflictException(
+                                                "Username is already taken.");
+                        }
+
+                        String logoUrl = fileStorageService.uploadOrganizationLogo(logo);
+
+                        Owner owner = new Owner();
+
+                        owner.setOwnerName(
+                                        request.getOwnerName().trim());
+
+                        owner.setOrganizationName(
+                                        request.getOrganizationName().trim());
+
+                        owner.setEmail(email);
+
+                        owner.setUsername(username);
+
+                        owner.setPassword(
+                                        passwordEncoder.encode(
+                                                        request.getPassword()));
+
+                        owner.setLogoUrl(logoUrl);
+
+                        Owner savedOwner = ownerRepository.save(owner);
+
+                        registrationSuccessCounter.increment();
+
+                        log.info(
+                                        "Owner registration completed successfully ownerId={} username={}",
+                                        savedOwner.getId(),
+                                        savedOwner.getUsername());
+
+                        return new OwnerRegistrationResponse(
+                                        savedOwner.getId(),
+                                        savedOwner.getOwnerName(),
+                                        savedOwner.getOrganizationName(),
+                                        savedOwner.getEmail(),
+                                        savedOwner.getUsername(),
+                                        savedOwner.getLogoUrl());
+
+                } catch (ConflictException ex) {
+
+                        throw ex;
+
+                } catch (Exception ex) {
+
+                        registrationFailureCounter.increment();
+
+                        log.error(
+                                        "Owner registration failed username={} errorType={}",
+                                        username,
+                                        ex.getClass().getSimpleName(),
+                                        ex);
+
+                        throw ex;
+
+                } finally {
+
+                        registrationTimer.record(
+                                        System.nanoTime() - start,
+                                        TimeUnit.NANOSECONDS);
+                }
         }
 
-        String logoUrl = fileStorageService.uploadOrganizationLogo(logo);
+        @Override
+        @Transactional
+        public OwnerLoginResponse login(
+                        OwnerLoginRequest request) {
 
-        Owner owner = new Owner();
+                long start = System.nanoTime();
 
-        owner.setOwnerName(
-                request.getOwnerName().trim());
+                String username = request.getUsername().trim();
 
-        owner.setOrganizationName(
-                request.getOrganizationName().trim());
+                log.info(
+                                "Owner login started username={}",
+                                username);
 
-        owner.setEmail(
-                request.getEmail().trim().toLowerCase());
+                try {
 
-        owner.setUsername(
-                request.getUsername().trim());
+                        Owner owner = ownerRepository
+                                        .findByUsername(username)
+                                        .orElseThrow(() -> {
 
-        owner.setPassword(
-                passwordEncoder.encode(
-                        request.getPassword()));
+                                                loginFailureCounter.increment();
 
-        owner.setLogoUrl(logoUrl);
+                                                log.warn(
+                                                                "Owner login failed because username was not found username={}",
+                                                                username);
 
-        Owner savedOwner = ownerRepository.save(owner);
+                                                return new UnauthorizedException(
+                                                                "Invalid username or password.");
+                                        });
 
-        return new OwnerRegistrationResponse(
-                savedOwner.getId(),
-                savedOwner.getOwnerName(),
-                savedOwner.getOrganizationName(),
-                savedOwner.getEmail(),
-                savedOwner.getUsername(),
-                savedOwner.getLogoUrl());
-    }
+                        if (!passwordEncoder.matches(
+                                        request.getPassword(),
+                                        owner.getPassword())) {
 
-    @Override
-    @Transactional
-    public OwnerLoginResponse login(
-            OwnerLoginRequest request) {
+                                loginFailureCounter.increment();
 
-        Owner owner = ownerRepository
-                .findByUsername(
-                        request.getUsername().trim())
-                .orElseThrow(() -> new UnauthorizedException(
-                        "Invalid username or password."));
+                                log.warn(
+                                                "Owner login failed because password was invalid username={}",
+                                                username);
 
-       
-        if (!passwordEncoder.matches(
-                request.getPassword(),
-                owner.getPassword())) {
+                                throw new UnauthorizedException(
+                                                "Invalid username or password.");
+                        }
 
-            throw new UnauthorizedException(
-                    "Invalid username or password.");
+                        otpRepository
+                                        .findTopByOwnerIdAndUsedFalseOrderByCreatedAtDesc(
+                                                        owner.getId())
+                                        .ifPresent(previousOtp -> {
+
+                                                previousOtp.setUsed(true);
+
+                                                otpRepository.save(previousOtp);
+
+                                                log.debug(
+                                                                "Previous unused OTP invalidated ownerId={}",
+                                                                owner.getId());
+                                        });
+
+                        String otp = generateOtp();
+
+                        OwnerLoginOtp loginOtp = new OwnerLoginOtp();
+
+                        loginOtp.setOwner(owner);
+
+                        loginOtp.setOtpHash(
+                                        passwordEncoder.encode(otp));
+
+                        loginOtp.setExpiresAt(
+                                        LocalDateTime.now()
+                                                        .plusMinutes(OTP_EXPIRY_MINUTES));
+
+                        loginOtp.setUsed(false);
+
+                        loginOtp.setAttempts(0);
+
+                        loginOtp.setCreatedAt(
+                                        LocalDateTime.now());
+
+                        otpRepository.save(loginOtp);
+
+                        otpCreatedCounter.increment();
+
+                        log.info(
+                                        "Login OTP created ownerId={} expiresInMinutes={}",
+                                        owner.getId(),
+                                        OTP_EXPIRY_MINUTES);
+
+                        /*
+                         * IMPORTANT:
+                         * Never log the actual OTP.
+                         */
+                        brevoEmailService.sendLoginOtp(
+                                        owner.getEmail(),
+                                        owner.getOwnerName(),
+                                        otp);
+
+                        log.info(
+                                        "Login OTP delivery requested ownerId={} email={}",
+                                        owner.getId(),
+                                        maskEmail(owner.getEmail()));
+
+                        loginSuccessCounter.increment();
+
+                        return new OwnerLoginResponse(
+                                        true,
+                                        "A verification code has been sent to your registered email address.",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        owner.getUsername(),
+                                        null);
+
+                } catch (UnauthorizedException ex) {
+
+                        throw ex;
+
+                } catch (Exception ex) {
+
+                        loginFailureCounter.increment();
+
+                        log.error(
+                                        "Owner login failed unexpectedly username={} errorType={}",
+                                        username,
+                                        ex.getClass().getSimpleName(),
+                                        ex);
+
+                        throw ex;
+
+                } finally {
+
+                        loginTimer.record(
+                                        System.nanoTime() - start,
+                                        TimeUnit.NANOSECONDS);
+                }
         }
 
-        otpRepository
-                .findTopByOwnerIdAndUsedFalseOrderByCreatedAtDesc(
-                        owner.getId())
-                .ifPresent(previousOtp -> {
+        @Override
+        @Transactional
+        public OwnerLoginResponse verifyLoginOtp(
+                        VerifyOtpRequest request) {
 
-                    previousOtp.setUsed(true);
+                long start = System.nanoTime();
 
-                    otpRepository.save(previousOtp);
-                });
+                String username = request.getUsername().trim();
 
-      
-        String otp = generateOtp();
+                log.info(
+                                "OTP verification started username={}",
+                                username);
 
-      
-        OwnerLoginOtp loginOtp = new OwnerLoginOtp();
+                try {
 
-        loginOtp.setOwner(owner);
+                        Owner owner = ownerRepository
+                                        .findByUsername(username)
+                                        .orElseThrow(() -> {
 
-        loginOtp.setOtpHash(
-                passwordEncoder.encode(otp));
+                                                loginFailureCounter.increment();
 
-        loginOtp.setExpiresAt(
-                LocalDateTime.now()
-                        .plusMinutes(OTP_EXPIRY_MINUTES));
+                                                log.warn(
+                                                                "OTP verification rejected because username was not found username={}",
+                                                                username);
 
-        loginOtp.setUsed(false);
+                                                return new UnauthorizedException(
+                                                                "Invalid verification request.");
+                                        });
 
-        loginOtp.setAttempts(0);
+                        OwnerLoginOtp loginOtp = otpRepository
+                                        .findTopByOwnerIdAndUsedFalseOrderByCreatedAtDesc(
+                                                        owner.getId())
+                                        .orElseThrow(() -> {
 
-        loginOtp.setCreatedAt(
-                LocalDateTime.now());
+                                                otpInvalidCounter.increment();
 
-        otpRepository.save(loginOtp);
+                                                log.warn(
+                                                                "OTP verification failed because no active OTP exists ownerId={}",
+                                                                owner.getId());
 
-     
-        brevoEmailService.sendLoginOtp(
-                owner.getEmail(),
-                owner.getOwnerName(),
-                otp);
+                                                return new UnauthorizedException(
+                                                                "Invalid or expired verification code.");
+                                        });
 
-  
-        return new OwnerLoginResponse(
-                true,
-                "A verification code has been sent to your registered email address.",
-                null,
-                null,
-                null,
-                null,
-                null,
-                owner.getUsername(),
-                null);
-    }
+                        if (loginOtp.getExpiresAt()
+                                        .isBefore(LocalDateTime.now())) {
 
- 
+                                loginOtp.setUsed(true);
 
-    @Override
-    @Transactional
-    public OwnerLoginResponse verifyLoginOtp(
-            VerifyOtpRequest request) {
+                                otpRepository.save(loginOtp);
 
-        Owner owner = ownerRepository
-                .findByUsername(
-                        request.getUsername().trim())
-                .orElseThrow(() -> new UnauthorizedException(
-                        "Invalid verification request."));
+                                otpExpiredCounter.increment();
 
-      
-        OwnerLoginOtp loginOtp = otpRepository
-                .findTopByOwnerIdAndUsedFalseOrderByCreatedAtDesc(
-                        owner.getId())
-                .orElseThrow(() -> new UnauthorizedException(
-                        "Invalid or expired verification code."));
+                                log.warn(
+                                                "OTP verification failed because OTP expired ownerId={}",
+                                                owner.getId());
 
-        if (loginOtp.getExpiresAt()
-                .isBefore(LocalDateTime.now())) {
+                                throw new UnauthorizedException(
+                                                "Verification code has expired. Please request a new code.");
+                        }
 
-           
-            loginOtp.setUsed(true);
+                        if (loginOtp.getAttempts() >= MAX_OTP_ATTEMPTS) {
 
-            otpRepository.save(loginOtp);
+                                loginOtp.setUsed(true);
 
-            throw new UnauthorizedException(
-                    "Verification code has expired. Please request a new code.");
+                                otpRepository.save(loginOtp);
+
+                                otpMaxAttemptsCounter.increment();
+
+                                log.warn(
+                                                "OTP verification blocked because maximum attempts were reached ownerId={}",
+                                                owner.getId());
+
+                                throw new UnauthorizedException(
+                                                "Too many incorrect attempts. Please request a new code.");
+                        }
+
+                        boolean otpMatches = passwordEncoder.matches(
+                                        request.getOtp(),
+                                        loginOtp.getOtpHash());
+
+                        if (!otpMatches) {
+
+                                int attempts = loginOtp.getAttempts() + 1;
+
+                                loginOtp.setAttempts(attempts);
+
+                                otpInvalidCounter.increment();
+
+                                if (attempts >= MAX_OTP_ATTEMPTS) {
+
+                                        loginOtp.setUsed(true);
+
+                                        otpRepository.save(loginOtp);
+
+                                        otpMaxAttemptsCounter.increment();
+
+                                        log.warn(
+                                                        "OTP verification locked after maximum attempts ownerId={} attempts={}",
+                                                        owner.getId(),
+                                                        attempts);
+
+                                        throw new UnauthorizedException(
+                                                        "Too many incorrect attempts. Please request a new code.");
+                                }
+
+                                otpRepository.save(loginOtp);
+
+                                log.warn(
+                                                "OTP verification failed ownerId={} attempts={}",
+                                                owner.getId(),
+                                                attempts);
+
+                                throw new UnauthorizedException(
+                                                "Invalid verification code.");
+                        }
+
+                        loginOtp.setUsed(true);
+
+                        otpRepository.save(loginOtp);
+
+                        String token = jwtService.generateToken(owner);
+
+                        otpSuccessCounter.increment();
+                        loginSuccessCounter.increment();
+
+                        log.info(
+                                        "OTP verification successful ownerId={}",
+                                        owner.getId());
+
+                        return new OwnerLoginResponse(
+                                        false,
+                                        "Login successful.",
+                                        token,
+                                        "Bearer",
+                                        owner.getId(),
+                                        owner.getOwnerName(),
+                                        owner.getOrganizationName(),
+                                        owner.getUsername(),
+                                        owner.getLogoUrl());
+
+                } catch (UnauthorizedException ex) {
+
+                        throw ex;
+
+                } catch (Exception ex) {
+
+                        loginFailureCounter.increment();
+
+                        log.error(
+                                        "OTP verification failed unexpectedly username={} errorType={}",
+                                        username,
+                                        ex.getClass().getSimpleName(),
+                                        ex);
+
+                        throw ex;
+
+                } finally {
+
+                        otpVerificationTimer.record(
+                                        System.nanoTime() - start,
+                                        TimeUnit.NANOSECONDS);
+                }
         }
 
-      
-        if (loginOtp.getAttempts() >= MAX_OTP_ATTEMPTS) {
+        private String generateOtp() {
 
-            loginOtp.setUsed(true);
+                int otp = 100000 + secureRandom.nextInt(900000);
 
-            otpRepository.save(loginOtp);
-
-            throw new UnauthorizedException(
-                    "Too many incorrect attempts. Please request a new code.");
+                return String.valueOf(otp);
         }
 
-       
-        boolean otpMatches = passwordEncoder.matches(
-                request.getOtp(),
-                loginOtp.getOtpHash());
+        private String maskEmail(String email) {
 
-     
-        if (!otpMatches) {
+                if (email == null || email.isBlank()) {
+                        return "unknown";
+                }
 
-           
-            int attempts = loginOtp.getAttempts() + 1;
+                int atIndex = email.indexOf('@');
 
-            loginOtp.setAttempts(attempts);
+                if (atIndex <= 1) {
+                        return "***";
+                }
 
-            if (attempts >= MAX_OTP_ATTEMPTS) {
-
-                loginOtp.setUsed(true);
-
-                otpRepository.save(loginOtp);
-
-                throw new UnauthorizedException(
-                        "Too many incorrect attempts. Please request a new code.");
-            }
-
-         
-            otpRepository.save(loginOtp);
-
-            throw new UnauthorizedException(
-                    "Invalid verification code.");
+                return email.charAt(0)
+                                + "***"
+                                + email.substring(atIndex);
         }
-
-       
-        loginOtp.setUsed(true);
-
-        otpRepository.save(loginOtp);
-
-        String token = jwtService.generateToken(owner);
-
-        return new OwnerLoginResponse(
-                false,
-                "Login successful.",
-                token,
-                "Bearer",
-                owner.getId(),
-                owner.getOwnerName(),
-                owner.getOrganizationName(),
-                owner.getUsername(),
-                owner.getLogoUrl());
-    }
-
-
-
-    private String generateOtp() {
-
-        int otp = 100000
-                + secureRandom.nextInt(900000);
-
-        return String.valueOf(otp);
-    }
 }

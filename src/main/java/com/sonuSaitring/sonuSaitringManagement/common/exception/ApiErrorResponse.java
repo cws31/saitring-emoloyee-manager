@@ -1,10 +1,10 @@
 package com.sonuSaitring.sonuSaitringManagement.common.exception;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-
 import java.time.Instant;
 import java.util.Map;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
 
 @Data
 @AllArgsConstructor
@@ -16,4 +16,5 @@ public class ApiErrorResponse {
     private String message;
     private String path;
     private Map<String, String> errors;
+    private String traceId;
 }
