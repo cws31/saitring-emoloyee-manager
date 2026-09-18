@@ -1,11 +1,7 @@
 services:
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-
-    image: sonu-saitring-management:latest
+    image: sonuku31/saitring-employee-manager:latest
 
     container_name: sonu-saitring-management
 
@@ -13,29 +9,47 @@ services:
       - "8080:8080"
 
     environment:
+
+      # Database
       DB_URL: ${DB_URL}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
 
+      DB_MAX_POOL_SIZE: ${DB_MAX_POOL_SIZE}
+      DB_MIN_IDLE: ${DB_MIN_IDLE}
+      DB_CONNECTION_TIMEOUT: ${DB_CONNECTION_TIMEOUT}
+      DB_IDLE_TIMEOUT: ${DB_IDLE_TIMEOUT}
+      DB_MAX_LIFETIME: ${DB_MAX_LIFETIME}
+      DB_KEEPALIVE_TIME: ${DB_KEEPALIVE_TIME}
+      DB_VALIDATION_TIMEOUT: ${DB_VALIDATION_TIMEOUT}
+
+      # Frontend
       FRONTEND_URL: ${FRONTEND_URL}
 
+      # JWT
       JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      JWT_EXPIRATION: ${JWT_EXPIRATION}
 
+      # Brevo
       BREVO_API_KEY: ${BREVO_API_KEY}
       BREVO_SENDER_EMAIL: ${BREVO_SENDER_EMAIL}
-      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME:-Saitring Employee Manager}
-      BREVO_OTP_TEMPLATE_ID: ${BREVO_OTP_TEMPLATE_ID:-1}
+      BREVO_SENDER_NAME: ${BREVO_SENDER_NAME}
+      BREVO_OTP_TEMPLATE_ID: ${BREVO_OTP_TEMPLATE_ID}
 
+      # Redis
       REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PORT: ${REDIS_PORT}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_SSL_ENABLED: ${REDIS_SSL_ENABLED:-true}
+      REDIS_SSL_ENABLED: ${REDIS_SSL_ENABLED}
+      REDIS_CONNECT_TIMEOUT: ${REDIS_CONNECT_TIMEOUT}
+      REDIS_TIMEOUT: ${REDIS_TIMEOUT}
 
+      # Twilio
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
       TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
 
+      # Logging
       LOGGING_LOGSTASH_HOST: logstash:5000
       ENVIRONMENT: production
 
