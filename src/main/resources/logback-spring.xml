@@ -6,7 +6,14 @@
         scope="context"
         name="applicationName"
         source="spring.application.name"
-        defaultValue="application"/>
+        defaultValue="sonuSaitringManagement"/>
+
+    <springProperty
+        scope="context"
+        name="logstashHost"
+        source="logging.logstash.host"
+        defaultValue="localhost:5000"/>
+
 
     <appender
         name="CONSOLE"
@@ -20,7 +27,7 @@
             <customFields>
                 {
                     "application":"${applicationName}",
-                    "environment":"${ENVIRONMENT:-production}"
+                    "environment":"${ENVIRONMENT:-development}"
                 }
             </customFields>
 
@@ -28,8 +35,37 @@
 
     </appender>
 
+
+    <appender
+        name="LOGSTASH"
+        class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+
+        <destination>${logstashHost}</destination>
+
+        <encoder
+            class="net.logstash.logback.encoder.LogstashEncoder">
+
+            <includeMdc>true</includeMdc>
+
+            <customFields>
+                {
+                    "application":"${applicationName}",
+                    "environment":"${ENVIRONMENT:-development}"
+                }
+            </customFields>
+
+        </encoder>
+
+    </appender>
+
+
+
     <root level="INFO">
+
         <appender-ref ref="CONSOLE"/>
+
+        <appender-ref ref="LOGSTASH"/>
+
     </root>
 
 </configuration>
