@@ -36,4 +36,68 @@ services:
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
       TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER}
 
+      LOGGING_LOGSTASH_HOST: logstash:5000
+      ENVIRONMENT: production
+
+    depends_on:
+      - logstash
+
     restart: unless-stopped
+
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.4
+
+    container_name: sonu-elasticsearch
+
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+
+    ports:
+      - "9200:9200"
+
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+
+    restart: unless-stopped
+
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:9.5.4
+
+    container_name: sonu-logstash
+
+    ports:
+      - "5000:5000"
+
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+
+    depends_on:
+      - elasticsearch
+
+    restart: unless-stopped
+
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:9.5.4
+
+    container_name: sonu-kibana
+
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+
+    ports:
+      - "5601:5601"
+
+    depends_on:
+      - elasticsearch
+
+    restart: unless-stopped
+
+
+volumes:
+
+  elasticsearch_data:
