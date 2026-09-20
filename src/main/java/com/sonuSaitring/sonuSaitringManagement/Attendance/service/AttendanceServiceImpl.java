@@ -1,12 +1,11 @@
 package com.sonuSaitring.sonuSaitringManagement.Attendance.service;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceSummaryDTO;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.BulkAttendanceRequestDTO;
 import com.sonuSaitring.sonuSaitringManagement.owner.entity.Owner;
 import org.slf4j.Logger;
@@ -362,6 +361,51 @@ public class AttendanceServiceImpl implements AttendanceService {
                                 .map(this::mapToResponseDTO)
                                 .collect(Collectors.toList());
                 });
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public AttendanceSummaryDTO getDailyAttendanceSummary(LocalDate date) {
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
+                logger.debug("Fetching daily attendance summary for ownerId: {} on date: {}", ownerId, date);
+
+                AttendanceSummaryDTO summary = attendanceRepository.findDailySummaryByOwnerAndDate(ownerId, date);
+
+                if (summary == null) {
+                        return new AttendanceSummaryDTO(date, 0, 0, 0);
+                }
+                return summary;
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public List<AttendanceSummaryDTO> getMonthlyAttendanceSummary(int year, int month) {
+                if (month < 1 || month > 12) {
+                        throw new IllegalArgumentException("Invalid month provided: " + month + ". Month must be between 1 and 12.");
+                }
+
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
+                logger.debug("Fetching monthly attendance summary for ownerId: {} for year: {}, month: {}", ownerId, year, month);
+
+                LocalDate startDate = LocalDate.of(year, month, 1);
+                LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
+
+                List<AttendanceSummaryDTO> dbResults = attendanceRepository.findMonthlySummaryByOwnerAndDateRange(ownerId, startDate, endDate);
+
+                Map<LocalDate, AttendanceSummaryDTO> resultMap = dbResults.stream()
+                        .collect(Collectors.toMap(AttendanceSummaryDTO::getAttendanceDate, Function.identity()));
+
+                List<AttendanceSummaryDTO> completeMonthlyList = new ArrayList<>();
+                LocalDate currentDay = startDate;
+
+                while (!currentDay.isAfter(endDate)) {
+                        AttendanceSummaryDTO daySummary = resultMap.getOrDefault(currentDay,
+                                new AttendanceSummaryDTO(currentDay, 0, 0, 0));
+                        completeMonthlyList.add(daySummary);
+                        currentDay = currentDay.plusDays(1);
+                }
+
+                return completeMonthlyList;
         }
 
         private AttendanceResponseDTO mapToResponseDTO(

@@ -3,14 +3,17 @@ package com.sonuSaitring.sonuSaitringManagement.Attendance.controller;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceRequestDTO;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceResponseDTO;
+import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceSummaryDTO;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.BulkAttendanceRequestDTO;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.service.AttendanceService;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -110,5 +113,32 @@ public class AttendanceController {
                 list.size());
 
         return ResponseEntity.ok(list);
+    }
+
+    @GetMapping("/summary/day")
+    public ResponseEntity<AttendanceSummaryDTO> getDailySummary(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+
+        logger.info("Daily attendance summary request received: date={}", date);
+
+        AttendanceSummaryDTO summary = attendanceService.getDailyAttendanceSummary(date);
+
+        logger.info("Daily attendance summary request completed: date={}", date);
+
+        return ResponseEntity.ok(summary);
+    }
+
+    @GetMapping("/summary/month")
+    public ResponseEntity<List<AttendanceSummaryDTO>> getMonthlySummary(
+            @RequestParam int year,
+            @RequestParam int month) {
+
+        logger.info("Monthly attendance summary request received: year={}, month={}", year, month);
+
+        List<AttendanceSummaryDTO> summaries = attendanceService.getMonthlyAttendanceSummary(year, month);
+
+        logger.info("Monthly attendance summary request completed: year={}, month={}, records={}", year, month, summaries.size());
+
+        return ResponseEntity.ok(summaries);
     }
 }
