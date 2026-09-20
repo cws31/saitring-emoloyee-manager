@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceRequestDTO;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceResponseDTO;
+import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.BulkAttendanceRequestDTO;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.service.AttendanceService;
 
 import java.util.List;
@@ -42,6 +43,25 @@ public class AttendanceController {
                 requestDTO.getAttendanceDate());
 
         return ResponseEntity.ok(saved);
+    }
+
+    @PostMapping("/bulk")
+    public ResponseEntity<List<AttendanceResponseDTO>> markBulkAttendance(
+            @Valid @RequestBody BulkAttendanceRequestDTO requestDTO) {
+
+        logger.info(
+                "Bulk attendance request received: date={}, status={}",
+                requestDTO.getAttendanceDate(),
+                requestDTO.getStatus());
+
+        List<AttendanceResponseDTO> savedList = attendanceService.markBulkAttendance(requestDTO);
+
+        logger.info(
+                "Bulk attendance request completed: date={}, records={}",
+                requestDTO.getAttendanceDate(),
+                savedList.size());
+
+        return ResponseEntity.ok(savedList);
     }
 
     @GetMapping("/month")

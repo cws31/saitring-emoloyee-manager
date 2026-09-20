@@ -1,10 +1,14 @@
 package com.sonuSaitring.sonuSaitringManagement.Attendance.service;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.BulkAttendanceRequestDTO;
+import com.sonuSaitring.sonuSaitringManagement.owner.entity.Owner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -39,95 +43,105 @@ public class AttendanceServiceImpl implements AttendanceService {
         private final Counter employeeNotFound;
         private final Counter monthlyQueries;
         private final Counter employeeMonthlyQueries;
+        private final Counter bulkAttendanceMarked;
 
         private final Timer markAttendanceTimer;
         private final Timer monthlyAttendanceTimer;
         private final Timer employeeMonthlyAttendanceTimer;
+        private final Timer markBulkAttendanceTimer;
 
         public AttendanceServiceImpl(
-                        AttendanceRepository attendanceRepository,
-                        EmployeeRepository employeeRepository,
-                        CurrentOwnerService currentOwnerService,
-                        MeterRegistry meterRegistry) {
+                AttendanceRepository attendanceRepository,
+                EmployeeRepository employeeRepository,
+                CurrentOwnerService currentOwnerService,
+                MeterRegistry meterRegistry) {
 
                 this.attendanceRepository = attendanceRepository;
                 this.employeeRepository = employeeRepository;
                 this.currentOwnerService = currentOwnerService;
 
                 this.attendanceMarked = Counter.builder("attendance.marked")
-                                .description("Number of successfully marked attendance records")
-                                .register(meterRegistry);
+                        .description("Number of successfully marked attendance records")
+                        .register(meterRegistry);
 
                 this.attendanceCreated = Counter.builder("attendance.created")
-                                .description("Number of newly created attendance records")
-                                .register(meterRegistry);
+                        .description("Number of newly created attendance records")
+                        .register(meterRegistry);
 
                 this.attendanceUpdated = Counter.builder("attendance.updated")
-                                .description("Number of existing attendance records updated")
-                                .register(meterRegistry);
+                        .description("Number of existing attendance records updated")
+                        .register(meterRegistry);
 
                 this.employeeNotFound = Counter.builder("attendance.employee_not_found")
-                                .description("Number of attendance requests for unavailable employees")
-                                .register(meterRegistry);
+                        .description("Number of attendance requests for unavailable employees")
+                        .register(meterRegistry);
 
                 this.monthlyQueries = Counter.builder("attendance.monthly_query")
-                                .description("Number of monthly attendance queries")
-                                .register(meterRegistry);
+                        .description("Number of monthly attendance queries")
+                        .register(meterRegistry);
 
                 this.employeeMonthlyQueries = Counter.builder("attendance.employee_monthly_query")
-                                .description("Number of employee monthly attendance queries")
-                                .register(meterRegistry);
+                        .description("Number of employee monthly attendance queries")
+                        .register(meterRegistry);
+
+                this.bulkAttendanceMarked = Counter.builder("attendance.bulk_marked")
+                        .description("Number of successfully executed bulk attendance requests")
+                        .register(meterRegistry);
 
                 this.markAttendanceTimer = Timer.builder("attendance.mark.duration")
-                                .description("Time taken to mark attendance")
-                                .register(meterRegistry);
+                        .description("Time taken to mark attendance")
+                        .register(meterRegistry);
 
                 this.monthlyAttendanceTimer = Timer.builder("attendance.monthly_query.duration")
-                                .description("Time taken to retrieve monthly attendance")
-                                .register(meterRegistry);
+                        .description("Time taken to retrieve monthly attendance")
+                        .register(meterRegistry);
 
                 this.employeeMonthlyAttendanceTimer = Timer.builder("attendance.employee_monthly_query.duration")
-                                .description("Time taken to retrieve employee monthly attendance")
-                                .register(meterRegistry);
+                        .description("Time taken to retrieve employee monthly attendance")
+                        .register(meterRegistry);
+
+                this.markBulkAttendanceTimer = Timer.builder("attendance.mark_bulk.duration")
+                        .description("Time taken to execute bulk attendance marking")
+                        .register(meterRegistry);
         }
 
         @Override
         public AttendanceResponseDTO markAttendance(
-                        AttendanceRequestDTO requestDTO) {
+                AttendanceRequestDTO requestDTO) {
 
                 return markAttendanceTimer.record(() -> {
 
                         Long ownerId = currentOwnerService.getCurrentOwnerId();
 
                         logger.info(
-                                        "Marking attendance: ownerId={}, employeeId={}, date={}, status={}",
-                                        ownerId,
-                                        requestDTO.getEmployeeId(),
-                                        requestDTO.getAttendanceDate(),
-                                        requestDTO.getStatus());
+                                "Marking attendance: ownerId={}, employeeId={}, date={}, status={}",
+                                ownerId,
+                                requestDTO.getEmployeeId(),
+                                requestDTO.getAttendanceDate(),
+                                requestDTO.getStatus());
 
                         Employee employee = employeeRepository
-                                        .findByIdAndOwnerId(
-                                                        requestDTO.getEmployeeId(),
-                                                        ownerId)
-                                        .orElseThrow(() -> {
+                                .findByIdAndOwnerId(
+                                        requestDTO.getEmployeeId(),
+                                        ownerId)
+                                .orElseThrow(() -> {
 
-                                                employeeNotFound.increment();
+                                        employeeNotFound.increment();
 
-                                                logger.warn(
-                                                                "Attendance rejected because employee was not found: ownerId={}, employeeId={}",
-                                                                ownerId,
-                                                                requestDTO.getEmployeeId());
+                                        logger.warn(
+                                                "Attendance rejected because employee was not found: ownerId={}, employeeId={}",
+                                                ownerId,
+                                                requestDTO.getEmployeeId());
 
-                                                return new ResourceNotFoundException(
-                                                                "Employee not found.");
-                                        });
+                                        return new ResourceNotFoundException(
+                                                "Employee not found.");
+                                });
 
                         Optional<Attendance> existing = attendanceRepository
-                                        .findByOwnerIdAndEmployeeIdAndAttendanceDate(
-                                                        ownerId,
-                                                        requestDTO.getEmployeeId(),
-                                                        requestDTO.getAttendanceDate());
+                                .findByOwnerIdAndEmployeeIdAndAttendanceDate(
+                                        ownerId,
+                                        requestDTO.getEmployeeId(),
+                                        requestDTO.getAttendanceDate());
 
                         Attendance attendance;
 
@@ -141,11 +155,11 @@ public class AttendanceServiceImpl implements AttendanceService {
                                 attendanceUpdated.increment();
 
                                 logger.debug(
-                                                "Existing attendance updated: attendanceId={}, ownerId={}, employeeId={}, date={}",
-                                                attendance.getId(),
-                                                ownerId,
-                                                requestDTO.getEmployeeId(),
-                                                requestDTO.getAttendanceDate());
+                                        "Existing attendance updated: attendanceId={}, ownerId={}, employeeId={}, date={}",
+                                        attendance.getId(),
+                                        ownerId,
+                                        requestDTO.getEmployeeId(),
+                                        requestDTO.getAttendanceDate());
 
                         } else {
 
@@ -160,10 +174,10 @@ public class AttendanceServiceImpl implements AttendanceService {
                                 attendanceCreated.increment();
 
                                 logger.debug(
-                                                "New attendance record created: ownerId={}, employeeId={}, date={}",
-                                                ownerId,
-                                                requestDTO.getEmployeeId(),
-                                                requestDTO.getAttendanceDate());
+                                        "New attendance record created: ownerId={}, employeeId={}, date={}",
+                                        ownerId,
+                                        requestDTO.getEmployeeId(),
+                                        requestDTO.getAttendanceDate());
                         }
 
                         Attendance savedAttendance = attendanceRepository.save(attendance);
@@ -171,12 +185,12 @@ public class AttendanceServiceImpl implements AttendanceService {
                         attendanceMarked.increment();
 
                         logger.info(
-                                        "Attendance marked successfully: attendanceId={}, ownerId={}, employeeId={}, date={}, status={}",
-                                        savedAttendance.getId(),
-                                        ownerId,
-                                        requestDTO.getEmployeeId(),
-                                        requestDTO.getAttendanceDate(),
-                                        savedAttendance.getStatus());
+                                "Attendance marked successfully: attendanceId={}, ownerId={}, employeeId={}, date={}, status={}",
+                                savedAttendance.getId(),
+                                ownerId,
+                                requestDTO.getEmployeeId(),
+                                requestDTO.getAttendanceDate(),
+                                savedAttendance.getStatus());
 
                         return mapToResponseDTO(savedAttendance);
                 });
@@ -185,8 +199,8 @@ public class AttendanceServiceImpl implements AttendanceService {
         @Override
         @Transactional(readOnly = true)
         public List<AttendanceResponseDTO> getMonthlyAttendance(
-                        int year,
-                        int month) {
+                int year,
+                int month) {
 
                 return monthlyAttendanceTimer.record(() -> {
 
@@ -198,28 +212,28 @@ public class AttendanceServiceImpl implements AttendanceService {
                         LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
 
                         logger.info(
-                                        "Fetching monthly attendance: ownerId={}, year={}, month={}, startDate={}, endDate={}",
-                                        ownerId,
-                                        year,
-                                        month,
-                                        startDate,
-                                        endDate);
+                                "Fetching monthly attendance: ownerId={}, year={}, month={}, startDate={}, endDate={}",
+                                ownerId,
+                                year,
+                                month,
+                                startDate,
+                                endDate);
 
                         List<AttendanceResponseDTO> result = attendanceRepository
-                                        .findAllByOwnerIdAndMonth(
-                                                        ownerId,
-                                                        startDate,
-                                                        endDate)
-                                        .stream()
-                                        .map(this::mapToResponseDTO)
-                                        .collect(Collectors.toList());
+                                .findAllByOwnerIdAndMonth(
+                                        ownerId,
+                                        startDate,
+                                        endDate)
+                                .stream()
+                                .map(this::mapToResponseDTO)
+                                .collect(Collectors.toList());
 
                         logger.info(
-                                        "Monthly attendance fetched successfully: ownerId={}, year={}, month={}, records={}",
-                                        ownerId,
-                                        year,
-                                        month,
-                                        result.size());
+                                "Monthly attendance fetched successfully: ownerId={}, year={}, month={}, records={}",
+                                ownerId,
+                                year,
+                                month,
+                                result.size());
 
                         return result;
                 });
@@ -228,9 +242,9 @@ public class AttendanceServiceImpl implements AttendanceService {
         @Override
         @Transactional(readOnly = true)
         public List<AttendanceResponseDTO> getEmployeeMonthlyAttendance(
-                        Long employeeId,
-                        int year,
-                        int month) {
+                Long employeeId,
+                int year,
+                int month) {
 
                 return employeeMonthlyAttendanceTimer.record(() -> {
 
@@ -242,63 +256,128 @@ public class AttendanceServiceImpl implements AttendanceService {
                         LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
 
                         logger.info(
-                                        "Fetching employee monthly attendance: ownerId={}, employeeId={}, year={}, month={}",
-                                        ownerId,
-                                        employeeId,
-                                        year,
-                                        month);
+                                "Fetching employee monthly attendance: ownerId={}, employeeId={}, year={}, month={}",
+                                ownerId,
+                                employeeId,
+                                year,
+                                month);
 
                         employeeRepository
-                                        .findByIdAndOwnerId(employeeId, ownerId)
-                                        .orElseThrow(() -> {
+                                .findByIdAndOwnerId(employeeId, ownerId)
+                                .orElseThrow(() -> {
 
-                                                employeeNotFound.increment();
+                                        employeeNotFound.increment();
 
-                                                logger.warn(
-                                                                "Employee attendance lookup rejected because employee was not found: ownerId={}, employeeId={}",
-                                                                ownerId,
-                                                                employeeId);
+                                        logger.warn(
+                                                "Employee attendance lookup rejected because employee was not found: ownerId={}, employeeId={}",
+                                                ownerId,
+                                                employeeId);
 
-                                                return new ResourceNotFoundException(
-                                                                "Employee not found.");
-                                        });
+                                        return new ResourceNotFoundException(
+                                                "Employee not found.");
+                                });
 
                         List<AttendanceResponseDTO> result = attendanceRepository
-                                        .findByOwnerIdAndEmployeeIdAndMonth(
-                                                        ownerId,
-                                                        employeeId,
-                                                        startDate,
-                                                        endDate)
-                                        .stream()
-                                        .map(this::mapToResponseDTO)
-                                        .collect(Collectors.toList());
-
-                        logger.info(
-                                        "Employee monthly attendance fetched successfully: ownerId={}, employeeId={}, year={}, month={}, records={}",
+                                .findByOwnerIdAndEmployeeIdAndMonth(
                                         ownerId,
                                         employeeId,
-                                        year,
-                                        month,
-                                        result.size());
+                                        startDate,
+                                        endDate)
+                                .stream()
+                                .map(this::mapToResponseDTO)
+                                .collect(Collectors.toList());
+
+                        logger.info(
+                                "Employee monthly attendance fetched successfully: ownerId={}, employeeId={}, year={}, month={}, records={}",
+                                ownerId,
+                                employeeId,
+                                year,
+                                month,
+                                result.size());
 
                         return result;
                 });
         }
 
+        @Override
+        @Transactional
+        public List<AttendanceResponseDTO> markBulkAttendance(BulkAttendanceRequestDTO requestDTO) {
+                return markBulkAttendanceTimer.record(() -> {
+                        Owner currentOwner = currentOwnerService.getCurrentOwner();
+                        Long ownerId = currentOwner.getId();
+
+                        logger.info(
+                                "Marking bulk attendance: ownerId={}, date={}, status={}",
+                                ownerId,
+                                requestDTO.getAttendanceDate(),
+                                requestDTO.getStatus());
+
+                        List<Employee> employees = employeeRepository.findAllByOwnerId(currentOwner.getId());
+                        if (employees.isEmpty()) {
+                                logger.info("No employees found for bulk attendance: ownerId={}", ownerId);
+                                return Collections.emptyList();
+                        }
+
+                        List<Attendance> attendancesToSave = new ArrayList<>();
+
+                        for (Employee employee : employees) {
+                                Optional<Attendance> existing = attendanceRepository
+                                        .findByOwnerIdAndEmployeeIdAndAttendanceDate(
+                                                ownerId,
+                                                employee.getId(),
+                                                requestDTO.getAttendanceDate()
+                                        );
+
+                                Attendance attendance;
+
+                                if (existing.isPresent()) {
+                                        attendance = existing.get();
+                                        attendance.setStatus(requestDTO.getStatus());
+                                        attendance.setReason(requestDTO.getReason());
+                                        attendanceUpdated.increment();
+                                } else {
+                                        attendance = new Attendance();
+                                        attendance.setEmployee(employee);
+                                        attendance.setOwner(currentOwner);
+                                        attendance.setAttendanceDate(requestDTO.getAttendanceDate());
+                                        attendance.setStatus(requestDTO.getStatus());
+                                        attendance.setReason(requestDTO.getReason());
+                                        attendanceCreated.increment();
+                                }
+
+                                attendancesToSave.add(attendance);
+                        }
+
+                        List<Attendance> savedAttendances = attendanceRepository.saveAll(attendancesToSave);
+
+                        bulkAttendanceMarked.increment();
+
+                        logger.info(
+                                "Bulk attendance marked successfully: ownerId={}, date={}, totalRecords={}",
+                                ownerId,
+                                requestDTO.getAttendanceDate(),
+                                savedAttendances.size());
+
+                        return savedAttendances.stream()
+                                .map(this::mapToResponseDTO)
+                                .collect(Collectors.toList());
+                });
+        }
+
         private AttendanceResponseDTO mapToResponseDTO(
-                        Attendance attendance) {
+                Attendance attendance) {
 
                 Employee emp = attendance.getEmployee();
 
                 return AttendanceResponseDTO.builder()
-                                .id(attendance.getId())
-                                .attendanceDate(attendance.getAttendanceDate())
-                                .status(attendance.getStatus())
-                                .reason(attendance.getReason())
-                                .createdAt(attendance.getCreatedAt())
-                                .employeeId(emp != null ? emp.getId() : null)
-                                .employeeName(emp != null ? emp.getName() : null)
-                                .employeeMobile(emp != null ? emp.getMobile() : null)
-                                .build();
+                        .id(attendance.getId())
+                        .attendanceDate(attendance.getAttendanceDate())
+                        .status(attendance.getStatus())
+                        .reason(attendance.getReason())
+                        .createdAt(attendance.getCreatedAt())
+                        .employeeId(emp != null ? emp.getId() : null)
+                        .employeeName(emp != null ? emp.getName() : null)
+                        .employeeMobile(emp != null ? emp.getMobile() : null)
+                        .build();
         }
 }
