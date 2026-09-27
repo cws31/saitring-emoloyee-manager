@@ -320,8 +320,11 @@ public class OwnerServiceImpl implements OwnerService {
                 return identifier.contains("@");
         }
 
-        private OwnerProfileResponse toProfileResponse(
-                        Owner owner) {
+        private OwnerProfileResponse toProfileResponse(Owner owner) {
+
+                boolean logoExists = ownerLogoService.exists(owner.getId());
+
+                String logoVersion = ownerLogoService.getLogoVersion(owner.getId());
 
                 return new OwnerProfileResponse(
                                 owner.getId(),
@@ -336,8 +339,8 @@ public class OwnerServiceImpl implements OwnerService {
                                 owner.getCountry(),
                                 owner.getPostalCode(),
                                 owner.getWebsite(),
-                                ownerLogoService.exists(
-                                                owner.getId()));
+                                logoExists,
+                                logoVersion);
         }
 
         private String normalize(

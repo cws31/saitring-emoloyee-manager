@@ -13,4 +13,6 @@ public interface OwnerLogoService {
     void deleteLogo(Long ownerId);
 
     boolean exists(Long ownerId);
+
+    String getLogoVersion(Long ownerId);
 }

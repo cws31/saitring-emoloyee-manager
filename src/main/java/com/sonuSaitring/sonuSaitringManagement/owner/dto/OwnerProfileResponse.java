@@ -32,4 +32,6 @@ public class OwnerProfileResponse {
     private String website;
 
     private boolean logoExists;
+
+    private String logoVersion;
 }

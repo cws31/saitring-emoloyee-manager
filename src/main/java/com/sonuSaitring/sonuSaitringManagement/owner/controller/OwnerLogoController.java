@@ -17,28 +17,27 @@ import com.sonuSaitring.sonuSaitringManagement.owner.service.OwnerLogoService;
 @RequestMapping("/api/owners")
 public class OwnerLogoController {
 
-    private final OwnerLogoService ownerLogoService;
+        private final OwnerLogoService ownerLogoService;
 
-    public OwnerLogoController(
-            OwnerLogoService ownerLogoService) {
+        public OwnerLogoController(OwnerLogoService ownerLogoService) {
+                this.ownerLogoService = ownerLogoService;
+        }
 
-        this.ownerLogoService = ownerLogoService;
-    }
+        @GetMapping("/{ownerId}/logo")
+        public ResponseEntity<byte[]> getLogo(
+                        @PathVariable Long ownerId) {
 
-    @GetMapping("/{ownerId}/logo")
-    public ResponseEntity<byte[]> getLogo(
-            @PathVariable Long ownerId) {
+                OwnerLogo logo = ownerLogoService.getLogo(ownerId);
 
-        OwnerLogo logo = ownerLogoService.getLogo(ownerId);
+                MediaType mediaType = MediaType.parseMediaType(
+                                logo.getContentType());
 
-        MediaType mediaType = MediaType.parseMediaType(
-                logo.getContentType());
-
-        return ResponseEntity.ok()
-                .contentType(mediaType)
-                .cacheControl(
-                        CacheControl.maxAge(
-                                Duration.ofHours(24)).cachePublic())
-                .body(logo.getLogoData());
-    }
+                return ResponseEntity.ok()
+                                .contentType(mediaType)
+                                .cacheControl(
+                                                CacheControl
+                                                                .maxAge(Duration.ofHours(24))
+                                                                .cachePublic())
+                                .body(logo.getLogoData());
+        }
 }
