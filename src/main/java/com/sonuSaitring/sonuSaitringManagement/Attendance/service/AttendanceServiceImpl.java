@@ -311,11 +311,15 @@ public class AttendanceServiceImpl implements AttendanceService {
                                 requestDTO.getAttendanceDate(),
                                 requestDTO.getStatus());
 
-                        List<Employee> employees = employeeRepository.findAllByOwnerId(currentOwner.getId());
-                        if (employees.isEmpty()) {
-                                logger.info("No employees found for bulk attendance: ownerId={}", ownerId);
-                                return Collections.emptyList();
-                        }
+                       List<Employee> employees =
+        employeeRepository.findAllByOwnerIdAndBlockedFalse(ownerId);
+                       if (employees.isEmpty()) {
+    logger.info(
+            "No active employees found for bulk attendance: ownerId={}",
+            ownerId
+    );
+    return Collections.emptyList();
+}
 
                         List<Attendance> attendancesToSave = new ArrayList<>();
 
