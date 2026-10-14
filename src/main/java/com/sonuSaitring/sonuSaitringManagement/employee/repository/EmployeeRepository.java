@@ -25,7 +25,7 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
     List<Employee> findAllByOwnerId(
             Long ownerId);
 
-    // Only active (not blocked) employees
+  
     List<Employee> findAllByOwnerIdAndBlockedFalse(
             Long ownerId);
 
