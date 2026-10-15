@@ -87,4 +87,38 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
                 @Param("ownerId") Long ownerId,
                 @Param("startDate") LocalDate startDate,
                 @Param("endDate") LocalDate endDate);
+
+
+
+        @Modifying
+@Query("""
+        DELETE FROM Attendance a
+        WHERE a.id = :attendanceId
+          AND a.owner.id = :ownerId
+        """)
+int deleteByIdAndOwnerId(
+        @Param("attendanceId") Long attendanceId,
+        @Param("ownerId") Long ownerId);
+
+@Modifying
+@Query("""
+        DELETE FROM Attendance a
+        WHERE a.employee.id = :employeeId
+          AND a.owner.id = :ownerId
+          AND a.attendanceDate = :date
+        """)
+int deleteByEmployeeIdAndOwnerIdAndDate(
+        @Param("employeeId") Long employeeId,
+        @Param("ownerId") Long ownerId,
+        @Param("date") LocalDate date);
+
+@Modifying
+@Query("""
+        DELETE FROM Attendance a
+        WHERE a.owner.id = :ownerId
+          AND a.attendanceDate = :date
+        """)
+int deleteAllByOwnerIdAndDate(
+        @Param("ownerId") Long ownerId,
+        @Param("date") LocalDate date);
 }
