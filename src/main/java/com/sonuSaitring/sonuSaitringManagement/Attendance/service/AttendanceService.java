@@ -21,4 +21,13 @@ public interface AttendanceService {
     AttendanceSummaryDTO getDailyAttendanceSummary(LocalDate date);
 
     List<AttendanceSummaryDTO> getMonthlyAttendanceSummary(int year, int month);
+
+
+    
+int deleteAttendance(Long attendanceId);
+
+int deleteEmployeeAttendance(Long employeeId, LocalDate date);
+
+int deleteBulkAttendance(LocalDate date);
+
 }
