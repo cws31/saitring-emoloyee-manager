@@ -367,6 +367,89 @@ public class AttendanceServiceImpl implements AttendanceService {
                 });
         }
 
+
+        
+@Override
+@Transactional
+public int deleteAttendance(Long attendanceId) {
+    Long ownerId = currentOwnerService.getCurrentOwnerId();
+
+    int deleted = attendanceRepository.deleteByIdAndOwnerId(
+            attendanceId,
+            ownerId
+    );
+
+    if (deleted == 0) {
+        throw new ResourceNotFoundException(
+                "Attendance record not found."
+        );
+    }
+
+    logger.info(
+            "Attendance permanently deleted: ownerId={}, attendanceId={}",
+            ownerId,
+            attendanceId
+    );
+
+    return deleted;
+}
+
+@Override
+@Transactional
+public int deleteEmployeeAttendance(Long employeeId, LocalDate date) {
+    Long ownerId = currentOwnerService.getCurrentOwnerId();
+
+    // Verify that this employee belongs to the authenticated owner.
+    employeeRepository.findByIdAndOwnerId(employeeId, ownerId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                    "Employee not found."
+            ));
+
+    int deleted =
+            attendanceRepository.deleteByEmployeeIdAndOwnerIdAndDate(
+                    employeeId,
+                    ownerId,
+                    date
+            );
+
+    if (deleted == 0) {
+        throw new ResourceNotFoundException(
+                "Attendance record not found for this employee on the selected date."
+        );
+    }
+
+    logger.info(
+            "Employee attendance permanently deleted: ownerId={}, employeeId={}, date={}, records={}",
+            ownerId,
+            employeeId,
+            date,
+            deleted
+    );
+
+    return deleted;
+}
+
+@Override
+@Transactional
+public int deleteBulkAttendance(LocalDate date) {
+    Long ownerId = currentOwnerService.getCurrentOwnerId();
+
+    int deleted = attendanceRepository.deleteAllByOwnerIdAndDate(
+            ownerId,
+            date
+    );
+
+    logger.info(
+            "Bulk attendance deletion completed: ownerId={}, date={}, records={}",
+            ownerId,
+            date,
+            deleted
+    );
+
+    return deleted;
+}
+
+
         @Override
         @Transactional(readOnly = true)
         public AttendanceSummaryDTO getDailyAttendanceSummary(LocalDate date) {
