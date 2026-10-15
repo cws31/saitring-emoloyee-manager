@@ -6,7 +6,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import org.springframework.http.HttpStatus;
+import java.util.Map;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceRequestDTO;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceResponseDTO;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceSummaryDTO;
@@ -141,4 +142,67 @@ public class AttendanceController {
 
         return ResponseEntity.ok(summaries);
     }
+
+
+    
+@DeleteMapping("/{attendanceId}")
+public ResponseEntity<Map<String, Object>> deleteAttendance(
+        @PathVariable Long attendanceId) {
+
+    logger.info(
+            "Attendance deletion requested: attendanceId={}",
+            attendanceId
+    );
+
+    int deleted = attendanceService.deleteAttendance(attendanceId);
+
+    return ResponseEntity.ok(Map.of(
+            "message", "Attendance record permanently deleted.",
+            "deletedCount", deleted
+    ));
+}
+
+@DeleteMapping("/employee/{employeeId}")
+public ResponseEntity<Map<String, Object>> deleteEmployeeAttendance(
+        @PathVariable Long employeeId,
+        @RequestParam
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        LocalDate date) {
+
+    logger.info(
+            "Employee attendance deletion requested: employeeId={}, date={}",
+            employeeId,
+            date
+    );
+
+    int deleted = attendanceService.deleteEmployeeAttendance(
+            employeeId,
+            date
+    );
+
+    return ResponseEntity.ok(Map.of(
+            "message", "Employee attendance permanently deleted.",
+            "deletedCount", deleted
+    ));
+}
+
+@DeleteMapping("/bulk")
+public ResponseEntity<Map<String, Object>> deleteBulkAttendance(
+        @RequestParam
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        LocalDate date) {
+
+    logger.warn(
+            "Bulk attendance deletion requested: date={}",
+            date
+    );
+
+    int deleted = attendanceService.deleteBulkAttendance(date);
+
+    return ResponseEntity.ok(Map.of(
+            "message", "Bulk attendance deletion completed.",
+            "deletedCount", deleted
+    ));
+}
+
 }
