@@ -17,6 +17,7 @@ import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceRequestD
 import com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceResponseDTO;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.entity.Attendance;
 import com.sonuSaitring.sonuSaitringManagement.Attendance.repository.AttendanceRepository;
+import com.sonuSaitring.sonuSaitringManagement.Hisab.service.HisabService;
 import com.sonuSaitring.sonuSaitringManagement.common.exception.ResourceNotFoundException;
 import com.sonuSaitring.sonuSaitringManagement.employee.entity.Employee;
 import com.sonuSaitring.sonuSaitringManagement.employee.repository.EmployeeRepository;
@@ -35,6 +36,7 @@ public class AttendanceServiceImpl implements AttendanceService {
         private final AttendanceRepository attendanceRepository;
         private final EmployeeRepository employeeRepository;
         private final CurrentOwnerService currentOwnerService;
+        private final HisabService hisabService;
 
         private final Counter attendanceMarked;
         private final Counter attendanceCreated;
@@ -50,146 +52,148 @@ public class AttendanceServiceImpl implements AttendanceService {
         private final Timer markBulkAttendanceTimer;
 
         public AttendanceServiceImpl(
-                AttendanceRepository attendanceRepository,
-                EmployeeRepository employeeRepository,
-                CurrentOwnerService currentOwnerService,
-                MeterRegistry meterRegistry) {
+                        AttendanceRepository attendanceRepository,
+                        EmployeeRepository employeeRepository,
+                        CurrentOwnerService currentOwnerService,
+                        HisabService hisabService,
+                        MeterRegistry meterRegistry) {
 
                 this.attendanceRepository = attendanceRepository;
                 this.employeeRepository = employeeRepository;
                 this.currentOwnerService = currentOwnerService;
+                this.hisabService = hisabService;
 
                 this.attendanceMarked = Counter.builder("attendance.marked")
-                        .description("Number of successfully marked attendance records")
-                        .register(meterRegistry);
+                                .description("Number of successfully marked attendance records")
+                                .register(meterRegistry);
 
                 this.attendanceCreated = Counter.builder("attendance.created")
-                        .description("Number of newly created attendance records")
-                        .register(meterRegistry);
+                                .description("Number of newly created attendance records")
+                                .register(meterRegistry);
 
                 this.attendanceUpdated = Counter.builder("attendance.updated")
-                        .description("Number of existing attendance records updated")
-                        .register(meterRegistry);
+                                .description("Number of existing attendance records updated")
+                                .register(meterRegistry);
 
                 this.employeeNotFound = Counter.builder("attendance.employee_not_found")
-                        .description("Number of attendance requests for unavailable employees")
-                        .register(meterRegistry);
+                                .description("Number of attendance requests for unavailable employees")
+                                .register(meterRegistry);
 
                 this.monthlyQueries = Counter.builder("attendance.monthly_query")
-                        .description("Number of monthly attendance queries")
-                        .register(meterRegistry);
+                                .description("Number of monthly attendance queries")
+                                .register(meterRegistry);
 
                 this.employeeMonthlyQueries = Counter.builder("attendance.employee_monthly_query")
-                        .description("Number of employee monthly attendance queries")
-                        .register(meterRegistry);
+                                .description("Number of employee monthly attendance queries")
+                                .register(meterRegistry);
 
                 this.bulkAttendanceMarked = Counter.builder("attendance.bulk_marked")
-                        .description("Number of successfully executed bulk attendance requests")
-                        .register(meterRegistry);
+                                .description("Number of successfully executed bulk attendance requests")
+                                .register(meterRegistry);
 
                 this.markAttendanceTimer = Timer.builder("attendance.mark.duration")
-                        .description("Time taken to mark attendance")
-                        .register(meterRegistry);
+                                .description("Time taken to mark attendance")
+                                .register(meterRegistry);
 
                 this.monthlyAttendanceTimer = Timer.builder("attendance.monthly_query.duration")
-                        .description("Time taken to retrieve monthly attendance")
-                        .register(meterRegistry);
+                                .description("Time taken to retrieve monthly attendance")
+                                .register(meterRegistry);
 
                 this.employeeMonthlyAttendanceTimer = Timer.builder("attendance.employee_monthly_query.duration")
-                        .description("Time taken to retrieve employee monthly attendance")
-                        .register(meterRegistry);
+                                .description("Time taken to retrieve employee monthly attendance")
+                                .register(meterRegistry);
 
                 this.markBulkAttendanceTimer = Timer.builder("attendance.mark_bulk.duration")
-                        .description("Time taken to execute bulk attendance marking")
-                        .register(meterRegistry);
+                                .description("Time taken to execute bulk attendance marking")
+                                .register(meterRegistry);
         }
 
         @Override
         public AttendanceResponseDTO markAttendance(
-                AttendanceRequestDTO requestDTO) {
+                        AttendanceRequestDTO requestDTO) {
 
                 return markAttendanceTimer.record(() -> {
-
                         Long ownerId = currentOwnerService.getCurrentOwnerId();
 
                         logger.info(
-                                "Marking attendance: ownerId={}, employeeId={}, date={}, status={}",
-                                ownerId,
-                                requestDTO.getEmployeeId(),
-                                requestDTO.getAttendanceDate(),
-                                requestDTO.getStatus());
-
-                        Employee employee = employeeRepository
-                                .findByIdAndOwnerId(
-                                        requestDTO.getEmployeeId(),
-                                        ownerId)
-                                .orElseThrow(() -> {
-
-                                        employeeNotFound.increment();
-
-                                        logger.warn(
-                                                "Attendance rejected because employee was not found: ownerId={}, employeeId={}",
-                                                ownerId,
-                                                requestDTO.getEmployeeId());
-
-                                        return new ResourceNotFoundException(
-                                                "Employee not found.");
-                                });
-
-                        Optional<Attendance> existing = attendanceRepository
-                                .findByOwnerIdAndEmployeeIdAndAttendanceDate(
+                                        "Marking attendance: ownerId={}, employeeId={}, date={}, status={}",
                                         ownerId,
                                         requestDTO.getEmployeeId(),
+                                        requestDTO.getAttendanceDate(),
+                                        requestDTO.getStatus());
+
+                        Employee employee = employeeRepository
+                                        .findByIdAndOwnerId(requestDTO.getEmployeeId(), ownerId)
+                                        .orElseThrow(() -> {
+                                                employeeNotFound.increment();
+
+                                                return new ResourceNotFoundException("Employee not found.");
+                                        });
+
+                        validateEmployeeJoiningDate(
+                                        employee,
                                         requestDTO.getAttendanceDate());
+
+                        Optional<Attendance> existing = attendanceRepository
+                                        .findByOwnerIdAndEmployeeIdAndAttendanceDate(
+                                                        ownerId,
+                                                        requestDTO.getEmployeeId(),
+                                                        requestDTO.getAttendanceDate());
+
+                        hisabService.validateAttendanceMutation(
+                                        ownerId,
+                                        requestDTO.getEmployeeId(),
+                                        requestDTO.getAttendanceDate(),
+                                        requestDTO.getReason());
+
+                        String oldStatus = existing
+                                        .map(a -> a.getStatus().name())
+                                        .orElse(null);
 
                         Attendance attendance;
 
                         if (existing.isPresent()) {
-
                                 attendance = existing.get();
-
                                 attendance.setStatus(requestDTO.getStatus());
                                 attendance.setReason(requestDTO.getReason());
-
                                 attendanceUpdated.increment();
-
-                                logger.debug(
-                                        "Existing attendance updated: attendanceId={}, ownerId={}, employeeId={}, date={}",
-                                        attendance.getId(),
-                                        ownerId,
-                                        requestDTO.getEmployeeId(),
-                                        requestDTO.getAttendanceDate());
-
                         } else {
-
                                 attendance = new Attendance();
-
                                 attendance.setEmployee(employee);
                                 attendance.setOwner(currentOwnerService.getCurrentOwner());
                                 attendance.setAttendanceDate(requestDTO.getAttendanceDate());
                                 attendance.setStatus(requestDTO.getStatus());
                                 attendance.setReason(requestDTO.getReason());
-
                                 attendanceCreated.increment();
-
-                                logger.debug(
-                                        "New attendance record created: ownerId={}, employeeId={}, date={}",
-                                        ownerId,
-                                        requestDTO.getEmployeeId(),
-                                        requestDTO.getAttendanceDate());
                         }
 
                         Attendance savedAttendance = attendanceRepository.save(attendance);
 
+                        Map<String, Object> oldValues = new LinkedHashMap<>();
+                        oldValues.put("status", oldStatus);
+
+                        Map<String, Object> newValues = new LinkedHashMap<>();
+                        newValues.put("status", savedAttendance.getStatus().name());
+                        newValues.put("attendanceDate", savedAttendance.getAttendanceDate());
+
+                        hisabService.recordAttendanceChange(
+                                        ownerId,
+                                        savedAttendance.getEmployee().getId(),
+                                        savedAttendance.getAttendanceDate(),
+                                        existing.isPresent() ? "UPDATE" : "CREATE",
+                                        requestDTO.getReason(),
+                                        oldValues,
+                                        newValues);
+
                         attendanceMarked.increment();
 
                         logger.info(
-                                "Attendance marked successfully: attendanceId={}, ownerId={}, employeeId={}, date={}, status={}",
-                                savedAttendance.getId(),
-                                ownerId,
-                                requestDTO.getEmployeeId(),
-                                requestDTO.getAttendanceDate(),
-                                savedAttendance.getStatus());
+                                        "Attendance marked successfully: attendanceId={}, ownerId={}, employeeId={}, date={}, status={}",
+                                        savedAttendance.getId(),
+                                        ownerId,
+                                        requestDTO.getEmployeeId(),
+                                        requestDTO.getAttendanceDate(),
+                                        savedAttendance.getStatus());
 
                         return mapToResponseDTO(savedAttendance);
                 });
@@ -198,41 +202,36 @@ public class AttendanceServiceImpl implements AttendanceService {
         @Override
         @Transactional(readOnly = true)
         public List<AttendanceResponseDTO> getMonthlyAttendance(
-                int year,
-                int month) {
+                        int year,
+                        int month) {
 
                 return monthlyAttendanceTimer.record(() -> {
-
                         Long ownerId = currentOwnerService.getCurrentOwnerId();
-
                         monthlyQueries.increment();
 
                         LocalDate startDate = LocalDate.of(year, month, 1);
                         LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
 
-                        logger.info(
-                                "Fetching monthly attendance: ownerId={}, year={}, month={}, startDate={}, endDate={}",
-                                ownerId,
-                                year,
-                                month,
-                                startDate,
-                                endDate);
-
                         List<AttendanceResponseDTO> result = attendanceRepository
-                                .findAllByOwnerIdAndMonth(
-                                        ownerId,
-                                        startDate,
-                                        endDate)
-                                .stream()
-                                .map(this::mapToResponseDTO)
-                                .collect(Collectors.toList());
+                                        .findAllByOwnerIdAndMonth(ownerId, startDate, endDate)
+                                        .stream()
+                                        .filter(attendance -> {
+                                                Employee employee = attendance.getEmployee();
+                                                LocalDate joiningDate = employee.getJoiningDate();
+
+                                                return joiningDate != null
+                                                                && !attendance.getAttendanceDate()
+                                                                                .isBefore(joiningDate);
+                                        })
+                                        .map(this::mapToResponseDTO)
+                                        .collect(Collectors.toList());
 
                         logger.info(
-                                "Monthly attendance fetched successfully: ownerId={}, year={}, month={}, records={}",
-                                ownerId,
-                                year,
-                                month,
-                                result.size());
+                                        "Monthly attendance fetched: ownerId={}, year={}, month={}, records={}",
+                                        ownerId,
+                                        year,
+                                        month,
+                                        result.size());
 
                         return result;
                 });
@@ -241,58 +240,50 @@ public class AttendanceServiceImpl implements AttendanceService {
         @Override
         @Transactional(readOnly = true)
         public List<AttendanceResponseDTO> getEmployeeMonthlyAttendance(
-                Long employeeId,
-                int year,
-                int month) {
+                        Long employeeId,
+                        int year,
+                        int month) {
 
                 return employeeMonthlyAttendanceTimer.record(() -> {
-
                         Long ownerId = currentOwnerService.getCurrentOwnerId();
-
                         employeeMonthlyQueries.increment();
 
                         LocalDate startDate = LocalDate.of(year, month, 1);
                         LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
 
-                        logger.info(
-                                "Fetching employee monthly attendance: ownerId={}, employeeId={}, year={}, month={}",
-                                ownerId,
-                                employeeId,
-                                year,
-                                month);
+                        Employee employee = employeeRepository
+                                        .findByIdAndOwnerId(employeeId, ownerId)
+                                        .orElseThrow(() -> {
+                                                employeeNotFound.increment();
+                                                return new ResourceNotFoundException("Employee not found.");
+                                        });
 
-                        employeeRepository
-                                .findByIdAndOwnerId(employeeId, ownerId)
-                                .orElseThrow(() -> {
+                        LocalDate joiningDate = employee.getJoiningDate();
 
-                                        employeeNotFound.increment();
-
-                                        logger.warn(
-                                                "Employee attendance lookup rejected because employee was not found: ownerId={}, employeeId={}",
-                                                ownerId,
-                                                employeeId);
-
-                                        return new ResourceNotFoundException(
-                                                "Employee not found.");
-                                });
+                        // A month entirely before joining has no eligible attendance.
+                        if (joiningDate != null && endDate.isBefore(joiningDate)) {
+                                return Collections.emptyList();
+                        }
 
                         List<AttendanceResponseDTO> result = attendanceRepository
-                                .findByOwnerIdAndEmployeeIdAndMonth(
-                                        ownerId,
-                                        employeeId,
-                                        startDate,
-                                        endDate)
-                                .stream()
-                                .map(this::mapToResponseDTO)
-                                .collect(Collectors.toList());
+                                        .findByOwnerIdAndEmployeeIdAndMonth(
+                                                        ownerId,
+                                                        employeeId,
+                                                        startDate,
+                                                        endDate)
+                                        .stream()
+                                        .filter(attendance -> joiningDate == null
+                                                        || !attendance.getAttendanceDate().isBefore(joiningDate))
+                                        .map(this::mapToResponseDTO)
+                                        .collect(Collectors.toList());
 
                         logger.info(
-                                "Employee monthly attendance fetched successfully: ownerId={}, employeeId={}, year={}, month={}, records={}",
-                                ownerId,
-                                employeeId,
-                                year,
-                                month,
-                                result.size());
+                                        "Employee monthly attendance fetched: ownerId={}, employeeId={}, year={}, month={}, records={}",
+                                        ownerId,
+                                        employeeId,
+                                        year,
+                                        month,
+                                        result.size());
 
                         return result;
                 });
@@ -300,51 +291,86 @@ public class AttendanceServiceImpl implements AttendanceService {
 
         @Override
         @Transactional
-        public List<AttendanceResponseDTO> markBulkAttendance(BulkAttendanceRequestDTO requestDTO) {
+        public List<AttendanceResponseDTO> markBulkAttendance(
+                        BulkAttendanceRequestDTO requestDTO) {
+
                 return markBulkAttendanceTimer.record(() -> {
                         Owner currentOwner = currentOwnerService.getCurrentOwner();
                         Long ownerId = currentOwner.getId();
 
+                        LocalDate attendanceDate = requestDTO.getAttendanceDate();
+
+                        List<Employee> employees = employeeRepository.findAllByOwnerIdAndBlockedFalse(ownerId);
+
+                        if (employees.isEmpty()) {
+                                logger.info("Bulk attendance skipped: no active employees, ownerId={}", ownerId);
+                                return Collections.emptyList();
+                        }
+
+                        // Include only employees who have actually joined by the selected date.
+                        List<Employee> eligibleEmployees = employees.stream()
+                                        .filter(employee -> employee.getJoiningDate() != null)
+                                        .filter(employee -> !attendanceDate.isBefore(employee.getJoiningDate()))
+                                        .collect(Collectors.toList());
+
+                        int skippedEmployees = employees.size() - eligibleEmployees.size();
+
+                        if (eligibleEmployees.isEmpty()) {
+                                logger.info(
+                                                "Bulk attendance skipped: no eligible employees, ownerId={}, date={}, skipped={}",
+                                                ownerId,
+                                                attendanceDate,
+                                                skippedEmployees);
+                                return Collections.emptyList();
+                        }
+
                         logger.info(
-                                "Marking bulk attendance: ownerId={}, date={}, status={}",
-                                ownerId,
-                                requestDTO.getAttendanceDate(),
-                                requestDTO.getStatus());
+                                        "Bulk attendance started: ownerId={}, date={}, eligible={}, skipped={}",
+                                        ownerId,
+                                        attendanceDate,
+                                        eligibleEmployees.size(),
+                                        skippedEmployees);
 
-                       List<Employee> employees =
-        employeeRepository.findAllByOwnerIdAndBlockedFalse(ownerId);
-                       if (employees.isEmpty()) {
-    logger.info(
-            "No active employees found for bulk attendance: ownerId={}",
-            ownerId
-    );
-    return Collections.emptyList();
-}
-
-                        List<Attendance> attendancesToSave = new ArrayList<>();
-
-                        for (Employee employee : employees) {
-                                Optional<Attendance> existing = attendanceRepository
-                                        .findByOwnerIdAndEmployeeIdAndAttendanceDate(
+                        // Validate all eligible employees before modifying attendance records.
+                        for (Employee employee : eligibleEmployees) {
+                                hisabService.validateAttendanceMutation(
                                                 ownerId,
                                                 employee.getId(),
-                                                requestDTO.getAttendanceDate()
-                                        );
+                                                attendanceDate,
+                                                requestDTO.getReason());
+                        }
+
+                        List<Attendance> attendancesToSave = new ArrayList<>();
+                        Map<Long, String> oldStatuses = new HashMap<>();
+
+                        for (Employee employee : eligibleEmployees) {
+                                Optional<Attendance> existing = attendanceRepository
+                                                .findByOwnerIdAndEmployeeIdAndAttendanceDate(
+                                                                ownerId,
+                                                                employee.getId(),
+                                                                attendanceDate);
 
                                 Attendance attendance;
 
                                 if (existing.isPresent()) {
                                         attendance = existing.get();
+
+                                        oldStatuses.put(
+                                                        employee.getId(),
+                                                        attendance.getStatus().name());
+
                                         attendance.setStatus(requestDTO.getStatus());
                                         attendance.setReason(requestDTO.getReason());
+
                                         attendanceUpdated.increment();
                                 } else {
                                         attendance = new Attendance();
                                         attendance.setEmployee(employee);
                                         attendance.setOwner(currentOwner);
-                                        attendance.setAttendanceDate(requestDTO.getAttendanceDate());
+                                        attendance.setAttendanceDate(attendanceDate);
                                         attendance.setStatus(requestDTO.getStatus());
                                         attendance.setReason(requestDTO.getReason());
+
                                         attendanceCreated.increment();
                                 }
 
@@ -353,141 +379,186 @@ public class AttendanceServiceImpl implements AttendanceService {
 
                         List<Attendance> savedAttendances = attendanceRepository.saveAll(attendancesToSave);
 
+                        for (Attendance saved : savedAttendances) {
+                                Long employeeId = saved.getEmployee().getId();
+
+                                Map<String, Object> oldValues = new LinkedHashMap<>();
+                                oldValues.put("status", oldStatuses.get(employeeId));
+
+                                Map<String, Object> newValues = new LinkedHashMap<>();
+                                newValues.put("status", saved.getStatus().name());
+                                newValues.put("attendanceDate", saved.getAttendanceDate());
+
+                                hisabService.recordAttendanceChange(
+                                                ownerId,
+                                                employeeId,
+                                                saved.getAttendanceDate(),
+                                                oldStatuses.containsKey(employeeId) ? "UPDATE" : "CREATE",
+                                                requestDTO.getReason(),
+                                                oldValues,
+                                                newValues);
+                        }
+
                         bulkAttendanceMarked.increment();
 
                         logger.info(
-                                "Bulk attendance marked successfully: ownerId={}, date={}, totalRecords={}",
-                                ownerId,
-                                requestDTO.getAttendanceDate(),
-                                savedAttendances.size());
+                                        "Bulk attendance completed: ownerId={}, date={}, saved={}, skipped={}",
+                                        ownerId,
+                                        attendanceDate,
+                                        savedAttendances.size(),
+                                        skippedEmployees);
 
                         return savedAttendances.stream()
-                                .map(this::mapToResponseDTO)
-                                .collect(Collectors.toList());
+                                        .map(this::mapToResponseDTO)
+                                        .collect(Collectors.toList());
                 });
         }
 
+        @Override
+        @Transactional
+        public int deleteAttendance(Long attendanceId, String reason) {
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-        
-@Override
-@Transactional
-public int deleteAttendance(Long attendanceId) {
-    Long ownerId = currentOwnerService.getCurrentOwnerId();
+                Attendance existing = attendanceRepository
+                                .findByIdAndOwnerId(attendanceId, ownerId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Attendance record not found."));
 
-    int deleted = attendanceRepository.deleteByIdAndOwnerId(
-            attendanceId,
-            ownerId
-    );
+                LocalDate date = existing.getAttendanceDate();
+                Long employeeId = existing.getEmployee().getId();
 
-    if (deleted == 0) {
-        throw new ResourceNotFoundException(
-                "Attendance record not found."
-        );
-    }
+                hisabService.validateAttendanceMutation(ownerId, employeeId, date, reason);
 
-    logger.info(
-            "Attendance permanently deleted: ownerId={}, attendanceId={}",
-            ownerId,
-            attendanceId
-    );
+                Map<String, Object> oldValues = new LinkedHashMap<>();
+                oldValues.put("status", existing.getStatus().name());
+                oldValues.put("attendanceDate", date);
 
-    return deleted;
-}
+                int deleted = attendanceRepository.deleteByIdAndOwnerId(attendanceId, ownerId);
 
-@Override
-@Transactional
-public int deleteEmployeeAttendance(Long employeeId, LocalDate date) {
-    Long ownerId = currentOwnerService.getCurrentOwnerId();
+                if (deleted == 0) {
+                        throw new ResourceNotFoundException("Attendance record not found.");
+                }
 
-    // Verify that this employee belongs to the authenticated owner.
-    employeeRepository.findByIdAndOwnerId(employeeId, ownerId)
-            .orElseThrow(() -> new ResourceNotFoundException(
-                    "Employee not found."
-            ));
+                hisabService.recordAttendanceChange(
+                                ownerId, employeeId, date, "DELETE", reason, oldValues, null);
 
-    int deleted =
-            attendanceRepository.deleteByEmployeeIdAndOwnerIdAndDate(
-                    employeeId,
-                    ownerId,
-                    date
-            );
+                return deleted;
+        }
 
-    if (deleted == 0) {
-        throw new ResourceNotFoundException(
-                "Attendance record not found for this employee on the selected date."
-        );
-    }
+        @Override
+        @Transactional
+        public int deleteEmployeeAttendance(
+                        Long employeeId,
+                        LocalDate date,
+                        String reason) {
 
-    logger.info(
-            "Employee attendance permanently deleted: ownerId={}, employeeId={}, date={}, records={}",
-            ownerId,
-            employeeId,
-            date,
-            deleted
-    );
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
 
-    return deleted;
-}
+                employeeRepository.findByIdAndOwnerId(employeeId, ownerId)
+                                .orElseThrow(() -> new ResourceNotFoundException("Employee not found."));
 
-@Override
-@Transactional
-public int deleteBulkAttendance(LocalDate date) {
-    Long ownerId = currentOwnerService.getCurrentOwnerId();
+                Attendance existing = attendanceRepository
+                                .findByOwnerIdAndEmployeeIdAndAttendanceDate(ownerId, employeeId, date)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "Attendance record not found for this employee on the selected date."));
 
-    int deleted = attendanceRepository.deleteAllByOwnerIdAndDate(
-            ownerId,
-            date
-    );
+                hisabService.validateAttendanceMutation(ownerId, employeeId, date, reason);
 
-    logger.info(
-            "Bulk attendance deletion completed: ownerId={}, date={}, records={}",
-            ownerId,
-            date,
-            deleted
-    );
+                Map<String, Object> oldValues = new LinkedHashMap<>();
+                oldValues.put("status", existing.getStatus().name());
+                oldValues.put("attendanceDate", date);
 
-    return deleted;
-}
+                int deleted = attendanceRepository
+                                .deleteByEmployeeIdAndOwnerIdAndDate(employeeId, ownerId, date);
 
+                if (deleted == 0) {
+                        throw new ResourceNotFoundException("Attendance record not found.");
+                }
+
+                hisabService.recordAttendanceChange(
+                                ownerId, employeeId, date, "DELETE", reason, oldValues, null);
+
+                return deleted;
+        }
+
+        @Override
+        @Transactional
+        public int deleteBulkAttendance(LocalDate date, String reason) {
+                Long ownerId = currentOwnerService.getCurrentOwnerId();
+
+                List<Attendance> existingRows = attendanceRepository.findAllByOwnerIdAndMonth(ownerId, date, date);
+
+                for (Attendance row : existingRows) {
+                        hisabService.validateAttendanceMutation(
+                                        ownerId, row.getEmployee().getId(), date, reason);
+                }
+
+                int deleted = attendanceRepository.deleteAllByOwnerIdAndDate(ownerId, date);
+
+                for (Attendance row : existingRows) {
+                        Map<String, Object> oldValues = new LinkedHashMap<>();
+                        oldValues.put("status", row.getStatus().name());
+                        oldValues.put("attendanceDate", date);
+
+                        hisabService.recordAttendanceChange(
+                                        ownerId,
+                                        row.getEmployee().getId(),
+                                        date,
+                                        "DELETE",
+                                        reason,
+                                        oldValues,
+                                        null);
+                }
+
+                return deleted;
+        }
 
         @Override
         @Transactional(readOnly = true)
         public AttendanceSummaryDTO getDailyAttendanceSummary(LocalDate date) {
                 Long ownerId = currentOwnerService.getCurrentOwnerId();
-                logger.debug("Fetching daily attendance summary for ownerId: {} on date: {}", ownerId, date);
 
                 AttendanceSummaryDTO summary = attendanceRepository.findDailySummaryByOwnerAndDate(ownerId, date);
 
                 if (summary == null) {
                         return new AttendanceSummaryDTO(date, 0, 0, 0);
                 }
+
                 return summary;
         }
 
         @Override
         @Transactional(readOnly = true)
-        public List<AttendanceSummaryDTO> getMonthlyAttendanceSummary(int year, int month) {
+        public List<AttendanceSummaryDTO> getMonthlyAttendanceSummary(
+                        int year,
+                        int month) {
+
                 if (month < 1 || month > 12) {
-                        throw new IllegalArgumentException("Invalid month provided: " + month + ". Month must be between 1 and 12.");
+                        throw new IllegalArgumentException(
+                                        "Invalid month provided: " + month
+                                                        + ". Month must be between 1 and 12.");
                 }
 
                 Long ownerId = currentOwnerService.getCurrentOwnerId();
-                logger.debug("Fetching monthly attendance summary for ownerId: {} for year: {}, month: {}", ownerId, year, month);
 
                 LocalDate startDate = LocalDate.of(year, month, 1);
                 LocalDate endDate = startDate.withDayOfMonth(startDate.lengthOfMonth());
 
-                List<AttendanceSummaryDTO> dbResults = attendanceRepository.findMonthlySummaryByOwnerAndDateRange(ownerId, startDate, endDate);
+                List<AttendanceSummaryDTO> dbResults = attendanceRepository.findMonthlySummaryByOwnerAndDateRange(
+                                ownerId, startDate, endDate);
 
                 Map<LocalDate, AttendanceSummaryDTO> resultMap = dbResults.stream()
-                        .collect(Collectors.toMap(AttendanceSummaryDTO::getAttendanceDate, Function.identity()));
+                                .collect(Collectors.toMap(
+                                                AttendanceSummaryDTO::getAttendanceDate,
+                                                Function.identity()));
 
                 List<AttendanceSummaryDTO> completeMonthlyList = new ArrayList<>();
                 LocalDate currentDay = startDate;
 
                 while (!currentDay.isAfter(endDate)) {
-                        AttendanceSummaryDTO daySummary = resultMap.getOrDefault(currentDay,
-                                new AttendanceSummaryDTO(currentDay, 0, 0, 0));
+                        AttendanceSummaryDTO daySummary = resultMap.getOrDefault(
+                                        currentDay,
+                                        new AttendanceSummaryDTO(currentDay, 0, 0, 0));
+
                         completeMonthlyList.add(daySummary);
                         currentDay = currentDay.plusDays(1);
                 }
@@ -495,20 +566,38 @@ public int deleteBulkAttendance(LocalDate date) {
                 return completeMonthlyList;
         }
 
-        private AttendanceResponseDTO mapToResponseDTO(
-                Attendance attendance) {
+        private void validateEmployeeJoiningDate(
+                        Employee employee,
+                        LocalDate attendanceDate) {
 
-                Employee emp = attendance.getEmployee();
+                LocalDate joiningDate = employee.getJoiningDate();
+
+                if (joiningDate == null) {
+                        throw new IllegalArgumentException(
+                                        "Joining date is not set for employee: "
+                                                        + employee.getName()
+                                                        + ". Please update the employee's joining date first.");
+                }
+
+                if (attendanceDate.isBefore(joiningDate)) {
+                        throw new IllegalArgumentException(
+                                        "Attendance cannot be marked before the employee's joining date: "
+                                                        + joiningDate);
+                }
+        }
+
+        private AttendanceResponseDTO mapToResponseDTO(Attendance attendance) {
+                Employee employee = attendance.getEmployee();
 
                 return AttendanceResponseDTO.builder()
-                        .id(attendance.getId())
-                        .attendanceDate(attendance.getAttendanceDate())
-                        .status(attendance.getStatus())
-                        .reason(attendance.getReason())
-                        .createdAt(attendance.getCreatedAt())
-                        .employeeId(emp != null ? emp.getId() : null)
-                        .employeeName(emp != null ? emp.getName() : null)
-                        .employeeMobile(emp != null ? emp.getMobile() : null)
-                        .build();
+                                .id(attendance.getId())
+                                .attendanceDate(attendance.getAttendanceDate())
+                                .status(attendance.getStatus())
+                                .reason(attendance.getReason())
+                                .createdAt(attendance.getCreatedAt())
+                                .employeeId(employee != null ? employee.getId() : null)
+                                .employeeName(employee != null ? employee.getName() : null)
+                                .employeeMobile(employee != null ? employee.getMobile() : null)
+                                .build();
         }
 }

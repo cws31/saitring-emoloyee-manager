@@ -53,13 +53,7 @@ public class Owner {
     @Column(nullable = false)
     private String password;
 
-    /*
-     * Legacy field.
-     *
-     * Logo is now stored in owner_logos.
-     * This can be removed later after the database migration
-     * is completed.
-     */
+  
     @Column(length = 1000)
     private String logoUrl;
 

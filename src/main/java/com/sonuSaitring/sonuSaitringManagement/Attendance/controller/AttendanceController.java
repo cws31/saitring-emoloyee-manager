@@ -21,188 +21,180 @@ import java.util.List;
 @RequestMapping("/api/attendance")
 public class AttendanceController {
 
-    private static final Logger logger = LoggerFactory.getLogger(AttendanceController.class);
+        private static final Logger logger = LoggerFactory.getLogger(AttendanceController.class);
 
-    private final AttendanceService attendanceService;
+        private final AttendanceService attendanceService;
 
-    public AttendanceController(AttendanceService attendanceService) {
-        this.attendanceService = attendanceService;
-    }
+        public AttendanceController(AttendanceService attendanceService) {
+                this.attendanceService = attendanceService;
+        }
 
-    @PostMapping
-    public ResponseEntity<AttendanceResponseDTO> markAttendance(
-            @Valid @RequestBody AttendanceRequestDTO requestDTO) {
+        @PostMapping
+        public ResponseEntity<AttendanceResponseDTO> markAttendance(
+                        @Valid @RequestBody AttendanceRequestDTO requestDTO) {
 
-        logger.info(
-                "Attendance request received: employeeId={}, date={}, status={}",
-                requestDTO.getEmployeeId(),
-                requestDTO.getAttendanceDate(),
-                requestDTO.getStatus());
+                logger.info(
+                                "Attendance request received: employeeId={}, date={}, status={}",
+                                requestDTO.getEmployeeId(),
+                                requestDTO.getAttendanceDate(),
+                                requestDTO.getStatus());
 
-        AttendanceResponseDTO saved = attendanceService.markAttendance(requestDTO);
+                AttendanceResponseDTO saved = attendanceService.markAttendance(requestDTO);
 
-        logger.info(
-                "Attendance request completed: employeeId={}, date={}",
-                requestDTO.getEmployeeId(),
-                requestDTO.getAttendanceDate());
+                logger.info(
+                                "Attendance request completed: employeeId={}, date={}",
+                                requestDTO.getEmployeeId(),
+                                requestDTO.getAttendanceDate());
 
-        return ResponseEntity.ok(saved);
-    }
+                return ResponseEntity.ok(saved);
+        }
 
-    @PostMapping("/bulk")
-    public ResponseEntity<List<AttendanceResponseDTO>> markBulkAttendance(
-            @Valid @RequestBody BulkAttendanceRequestDTO requestDTO) {
+        @PostMapping("/bulk")
+        public ResponseEntity<List<AttendanceResponseDTO>> markBulkAttendance(
+                        @Valid @RequestBody BulkAttendanceRequestDTO requestDTO) {
 
-        logger.info(
-                "Bulk attendance request received: date={}, status={}",
-                requestDTO.getAttendanceDate(),
-                requestDTO.getStatus());
+                logger.info(
+                                "Bulk attendance request received: date={}, status={}",
+                                requestDTO.getAttendanceDate(),
+                                requestDTO.getStatus());
 
-        List<AttendanceResponseDTO> savedList = attendanceService.markBulkAttendance(requestDTO);
+                List<AttendanceResponseDTO> savedList = attendanceService.markBulkAttendance(requestDTO);
 
-        logger.info(
-                "Bulk attendance request completed: date={}, records={}",
-                requestDTO.getAttendanceDate(),
-                savedList.size());
+                logger.info(
+                                "Bulk attendance request completed: date={}, records={}",
+                                requestDTO.getAttendanceDate(),
+                                savedList.size());
 
-        return ResponseEntity.ok(savedList);
-    }
+                return ResponseEntity.ok(savedList);
+        }
 
-    @GetMapping("/month")
-    public ResponseEntity<List<AttendanceResponseDTO>> getMonthlyAttendance(
-            @RequestParam int year,
-            @RequestParam int month) {
+        @GetMapping("/month")
+        public ResponseEntity<List<AttendanceResponseDTO>> getMonthlyAttendance(
+                        @RequestParam int year,
+                        @RequestParam int month) {
 
-        logger.info(
-                "Monthly attendance request received: year={}, month={}",
-                year,
-                month);
+                logger.info(
+                                "Monthly attendance request received: year={}, month={}",
+                                year,
+                                month);
 
-        List<AttendanceResponseDTO> list = attendanceService.getMonthlyAttendance(year, month);
+                List<AttendanceResponseDTO> list = attendanceService.getMonthlyAttendance(year, month);
 
-        logger.info(
-                "Monthly attendance request completed: year={}, month={}, records={}",
-                year,
-                month,
-                list.size());
+                logger.info(
+                                "Monthly attendance request completed: year={}, month={}, records={}",
+                                year,
+                                month,
+                                list.size());
 
-        return ResponseEntity.ok(list);
-    }
+                return ResponseEntity.ok(list);
+        }
 
-    @GetMapping("/employee/{employeeId}")
-    public ResponseEntity<List<AttendanceResponseDTO>> getEmployeeMonthlyAttendance(
-            @PathVariable Long employeeId,
-            @RequestParam int year,
-            @RequestParam int month) {
+        @GetMapping("/employee/{employeeId}")
+        public ResponseEntity<List<AttendanceResponseDTO>> getEmployeeMonthlyAttendance(
+                        @PathVariable Long employeeId,
+                        @RequestParam int year,
+                        @RequestParam int month) {
 
-        logger.info(
-                "Employee attendance request received: employeeId={}, year={}, month={}",
-                employeeId,
-                year,
-                month);
+                logger.info(
+                                "Employee attendance request received: employeeId={}, year={}, month={}",
+                                employeeId,
+                                year,
+                                month);
 
-        List<AttendanceResponseDTO> list = attendanceService.getEmployeeMonthlyAttendance(
-                employeeId,
-                year,
-                month);
+                List<AttendanceResponseDTO> list = attendanceService.getEmployeeMonthlyAttendance(
+                                employeeId,
+                                year,
+                                month);
 
-        logger.info(
-                "Employee attendance request completed: employeeId={}, year={}, month={}, records={}",
-                employeeId,
-                year,
-                month,
-                list.size());
+                logger.info(
+                                "Employee attendance request completed: employeeId={}, year={}, month={}, records={}",
+                                employeeId,
+                                year,
+                                month,
+                                list.size());
 
-        return ResponseEntity.ok(list);
-    }
+                return ResponseEntity.ok(list);
+        }
 
-    @GetMapping("/summary/day")
-    public ResponseEntity<AttendanceSummaryDTO> getDailySummary(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        @GetMapping("/summary/day")
+        public ResponseEntity<AttendanceSummaryDTO> getDailySummary(
+                        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
 
-        logger.info("Daily attendance summary request received: date={}", date);
+                logger.info("Daily attendance summary request received: date={}", date);
 
-        AttendanceSummaryDTO summary = attendanceService.getDailyAttendanceSummary(date);
+                AttendanceSummaryDTO summary = attendanceService.getDailyAttendanceSummary(date);
 
-        logger.info("Daily attendance summary request completed: date={}", date);
+                logger.info("Daily attendance summary request completed: date={}", date);
 
-        return ResponseEntity.ok(summary);
-    }
+                return ResponseEntity.ok(summary);
+        }
 
-    @GetMapping("/summary/month")
-    public ResponseEntity<List<AttendanceSummaryDTO>> getMonthlySummary(
-            @RequestParam int year,
-            @RequestParam int month) {
+        @GetMapping("/summary/month")
+        public ResponseEntity<List<AttendanceSummaryDTO>> getMonthlySummary(
+                        @RequestParam int year,
+                        @RequestParam int month) {
 
-        logger.info("Monthly attendance summary request received: year={}, month={}", year, month);
+                logger.info("Monthly attendance summary request received: year={}, month={}", year, month);
 
-        List<AttendanceSummaryDTO> summaries = attendanceService.getMonthlyAttendanceSummary(year, month);
+                List<AttendanceSummaryDTO> summaries = attendanceService.getMonthlyAttendanceSummary(year, month);
 
-        logger.info("Monthly attendance summary request completed: year={}, month={}, records={}", year, month, summaries.size());
+                logger.info("Monthly attendance summary request completed: year={}, month={}, records={}", year, month,
+                                summaries.size());
 
-        return ResponseEntity.ok(summaries);
-    }
+                return ResponseEntity.ok(summaries);
+        }
 
+        @DeleteMapping("/{attendanceId}")
+        public ResponseEntity<Map<String, Object>> deleteAttendance(
+                        @PathVariable Long attendanceId,
+                        @RequestParam(required = false) String reason) {
 
-    
-@DeleteMapping("/{attendanceId}")
-public ResponseEntity<Map<String, Object>> deleteAttendance(
-        @PathVariable Long attendanceId) {
+                logger.info(
+                                "Attendance deletion requested: attendanceId={}",
+                                attendanceId);
 
-    logger.info(
-            "Attendance deletion requested: attendanceId={}",
-            attendanceId
-    );
+                int deleted = attendanceService.deleteAttendance(attendanceId, reason);
 
-    int deleted = attendanceService.deleteAttendance(attendanceId);
+                return ResponseEntity.ok(Map.of(
+                                "message", "Attendance record permanently deleted.",
+                                "deletedCount", deleted));
+        }
 
-    return ResponseEntity.ok(Map.of(
-            "message", "Attendance record permanently deleted.",
-            "deletedCount", deleted
-    ));
-}
+        @DeleteMapping("/employee/{employeeId}")
+        public ResponseEntity<Map<String, Object>> deleteEmployeeAttendance(
+                        @PathVariable Long employeeId,
+                        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+                        @RequestParam(required = false) String reason) {
 
-@DeleteMapping("/employee/{employeeId}")
-public ResponseEntity<Map<String, Object>> deleteEmployeeAttendance(
-        @PathVariable Long employeeId,
-        @RequestParam
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-        LocalDate date) {
+                logger.info(
+                                "Employee attendance deletion requested: employeeId={}, date={}",
+                                employeeId,
+                                date);
 
-    logger.info(
-            "Employee attendance deletion requested: employeeId={}, date={}",
-            employeeId,
-            date
-    );
+                int deleted = attendanceService.deleteEmployeeAttendance(
+                                employeeId,
+                                date,
+                                reason);
 
-    int deleted = attendanceService.deleteEmployeeAttendance(
-            employeeId,
-            date
-    );
+                return ResponseEntity.ok(Map.of(
+                                "message", "Employee attendance permanently deleted.",
+                                "deletedCount", deleted));
+        }
 
-    return ResponseEntity.ok(Map.of(
-            "message", "Employee attendance permanently deleted.",
-            "deletedCount", deleted
-    ));
-}
+        @DeleteMapping("/bulk")
+        public ResponseEntity<Map<String, Object>> deleteBulkAttendance(
+                        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+                        @RequestParam(required = false) String reason) {
 
-@DeleteMapping("/bulk")
-public ResponseEntity<Map<String, Object>> deleteBulkAttendance(
-        @RequestParam
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-        LocalDate date) {
+                logger.warn(
+                                "Bulk attendance deletion requested: date={}",
+                                date);
 
-    logger.warn(
-            "Bulk attendance deletion requested: date={}",
-            date
-    );
+                int deleted = attendanceService.deleteBulkAttendance(date, reason);
 
-    int deleted = attendanceService.deleteBulkAttendance(date);
-
-    return ResponseEntity.ok(Map.of(
-            "message", "Bulk attendance deletion completed.",
-            "deletedCount", deleted
-    ));
-}
+                return ResponseEntity.ok(Map.of(
+                                "message", "Bulk attendance deletion completed.",
+                                "deletedCount", deleted));
+        }
 
 }

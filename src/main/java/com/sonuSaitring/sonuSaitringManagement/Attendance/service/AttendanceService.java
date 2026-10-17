@@ -22,12 +22,10 @@ public interface AttendanceService {
 
     List<AttendanceSummaryDTO> getMonthlyAttendanceSummary(int year, int month);
 
+    int deleteAttendance(Long attendanceId, String reason);
 
-    
-int deleteAttendance(Long attendanceId);
+    int deleteEmployeeAttendance(Long employeeId, LocalDate date, String reason);
 
-int deleteEmployeeAttendance(Long employeeId, LocalDate date);
-
-int deleteBulkAttendance(LocalDate date);
+    int deleteBulkAttendance(LocalDate date, String reason);
 
 }

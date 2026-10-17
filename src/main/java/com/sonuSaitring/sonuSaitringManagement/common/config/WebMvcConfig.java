@@ -13,25 +13,25 @@ import java.nio.file.Paths;
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
-    private static final Logger logger = LoggerFactory.getLogger(WebMvcConfig.class);
+        private static final Logger logger = LoggerFactory.getLogger(WebMvcConfig.class);
 
-    @Value("${file.storage.location:uploads}")
-    private String storageLocation;
+        @Value("${file.storage.location:uploads}")
+        private String storageLocation;
 
-    @Override
-    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        @Override
+        public void addResourceHandlers(ResourceHandlerRegistry registry) {
 
-        Path uploadDir = Paths.get(storageLocation)
-                .toAbsolutePath()
-                .normalize();
+                Path uploadDir = Paths.get(storageLocation)
+                                .toAbsolutePath()
+                                .normalize();
 
-        String uploadPath = uploadDir.toUri().toString();
+                String uploadPath = uploadDir.toUri().toString();
 
-        registry.addResourceHandler("/uploads/**")
-                .addResourceLocations(uploadPath + "/");
+                registry.addResourceHandler("/uploads/**")
+                                .addResourceLocations(uploadPath + "/");
 
-        logger.info(
-                "Static upload resource mapping initialized: resource=/uploads/**, storageLocation={}",
-                uploadDir);
-    }
+                logger.info(
+                                "Static upload resource mapping initialized: resource=/uploads/**, storageLocation={}",
+                                uploadDir);
+        }
 }

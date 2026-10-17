@@ -15,6 +15,9 @@ import java.util.Optional;
 @Repository
 public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
 
+        @Query("SELECT a FROM Attendance a JOIN FETCH a.employee WHERE a.id = :id AND a.owner.id = :ownerId")
+        Optional<Attendance> findByIdAndOwnerId(@Param("id") Long id, @Param("ownerId") Long ownerId);
+
         @Query("""
                         SELECT a
                         FROM Attendance a
@@ -24,9 +27,9 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
                           AND a.attendanceDate = :attendanceDate
                         """)
         Optional<Attendance> findByOwnerIdAndEmployeeIdAndAttendanceDate(
-                @Param("ownerId") Long ownerId,
-                @Param("employeeId") Long employeeId,
-                @Param("attendanceDate") LocalDate attendanceDate);
+                        @Param("ownerId") Long ownerId,
+                        @Param("employeeId") Long employeeId,
+                        @Param("attendanceDate") LocalDate attendanceDate);
 
         @Query("""
                         SELECT a
@@ -37,10 +40,10 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
                           AND a.attendanceDate BETWEEN :startDate AND :endDate
                         """)
         List<Attendance> findByOwnerIdAndEmployeeIdAndMonth(
-                @Param("ownerId") Long ownerId,
-                @Param("employeeId") Long employeeId,
-                @Param("startDate") LocalDate startDate,
-                @Param("endDate") LocalDate endDate);
+                        @Param("ownerId") Long ownerId,
+                        @Param("employeeId") Long employeeId,
+                        @Param("startDate") LocalDate startDate,
+                        @Param("endDate") LocalDate endDate);
 
         @Query("""
                         SELECT a
@@ -50,16 +53,16 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
                           AND a.attendanceDate BETWEEN :startDate AND :endDate
                         """)
         List<Attendance> findAllByOwnerIdAndMonth(
-                @Param("ownerId") Long ownerId,
-                @Param("startDate") LocalDate startDate,
-                @Param("endDate") LocalDate endDate);
+                        @Param("ownerId") Long ownerId,
+                        @Param("startDate") LocalDate startDate,
+                        @Param("endDate") LocalDate endDate);
 
         @Query("""
                         SELECT NEW com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceSummaryDTO(
                             a.attendanceDate,
                             SUM(CASE WHEN a.status = 'PRESENT' THEN 1 ELSE 0 END),
                             SUM(CASE WHEN a.status = 'ABSENT' THEN 1 ELSE 0 END),
-                            SUM(CASE WHEN a.status = 'HALF_PRESENT' THEN 1 ELSE 0 END)
+                            SUM(CASE WHEN a.status = 'HALF_DAY' THEN 1 ELSE 0 END)
                         )
                         FROM Attendance a
                         WHERE a.owner.id = :ownerId
@@ -67,15 +70,15 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
                         GROUP BY a.attendanceDate
                         """)
         AttendanceSummaryDTO findDailySummaryByOwnerAndDate(
-                @Param("ownerId") Long ownerId,
-                @Param("date") LocalDate date);
+                        @Param("ownerId") Long ownerId,
+                        @Param("date") LocalDate date);
 
         @Query("""
                         SELECT NEW com.sonuSaitring.sonuSaitringManagement.Attendance.dto.AttendanceSummaryDTO(
                             a.attendanceDate,
                             SUM(CASE WHEN a.status = 'PRESENT' THEN 1 ELSE 0 END),
                             SUM(CASE WHEN a.status = 'ABSENT' THEN 1 ELSE 0 END),
-                            SUM(CASE WHEN a.status = 'HALF_PRESENT' THEN 1 ELSE 0 END)
+                            SUM(CASE WHEN a.status = 'HALF_DAY' THEN 1 ELSE 0 END)
                         )
                         FROM Attendance a
                         WHERE a.owner.id = :ownerId
@@ -84,41 +87,47 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
                         ORDER BY a.attendanceDate ASC
                         """)
         List<AttendanceSummaryDTO> findMonthlySummaryByOwnerAndDateRange(
-                @Param("ownerId") Long ownerId,
-                @Param("startDate") LocalDate startDate,
-                @Param("endDate") LocalDate endDate);
+                        @Param("ownerId") Long ownerId,
+                        @Param("startDate") LocalDate startDate,
+                        @Param("endDate") LocalDate endDate);
 
-
+        @Query("""
+                        SELECT a FROM Attendance a JOIN FETCH a.employee
+                        WHERE a.owner.id = :ownerId AND a.employee.id = :employeeId
+                        ORDER BY a.attendanceDate ASC
+                        """)
+        List<Attendance> findAllForEmployeeAndOwner(
+                        @Param("ownerId") Long ownerId, @Param("employeeId") Long employeeId);
 
         @Modifying
-@Query("""
-        DELETE FROM Attendance a
-        WHERE a.id = :attendanceId
-          AND a.owner.id = :ownerId
-        """)
-int deleteByIdAndOwnerId(
-        @Param("attendanceId") Long attendanceId,
-        @Param("ownerId") Long ownerId);
+        @Query("""
+                        DELETE FROM Attendance a
+                        WHERE a.id = :attendanceId
+                          AND a.owner.id = :ownerId
+                        """)
+        int deleteByIdAndOwnerId(
+                        @Param("attendanceId") Long attendanceId,
+                        @Param("ownerId") Long ownerId);
 
-@Modifying
-@Query("""
-        DELETE FROM Attendance a
-        WHERE a.employee.id = :employeeId
-          AND a.owner.id = :ownerId
-          AND a.attendanceDate = :date
-        """)
-int deleteByEmployeeIdAndOwnerIdAndDate(
-        @Param("employeeId") Long employeeId,
-        @Param("ownerId") Long ownerId,
-        @Param("date") LocalDate date);
+        @Modifying
+        @Query("""
+                        DELETE FROM Attendance a
+                        WHERE a.employee.id = :employeeId
+                          AND a.owner.id = :ownerId
+                          AND a.attendanceDate = :date
+                        """)
+        int deleteByEmployeeIdAndOwnerIdAndDate(
+                        @Param("employeeId") Long employeeId,
+                        @Param("ownerId") Long ownerId,
+                        @Param("date") LocalDate date);
 
-@Modifying
-@Query("""
-        DELETE FROM Attendance a
-        WHERE a.owner.id = :ownerId
-          AND a.attendanceDate = :date
-        """)
-int deleteAllByOwnerIdAndDate(
-        @Param("ownerId") Long ownerId,
-        @Param("date") LocalDate date);
+        @Modifying
+        @Query("""
+                        DELETE FROM Attendance a
+                        WHERE a.owner.id = :ownerId
+                          AND a.attendanceDate = :date
+                        """)
+        int deleteAllByOwnerIdAndDate(
+                        @Param("ownerId") Long ownerId,
+                        @Param("date") LocalDate date);
 }

@@ -1,6 +1,8 @@
 package com.sonuSaitring.sonuSaitringManagement.employee.dto;
 
-
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PastOrPresent;
+import java.time.LocalDate;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -20,4 +22,8 @@ public class EmployeeRequestDTO {
 
     @PositiveOrZero(message = "Initial rate must be zero or positive")
     private BigDecimal initialRate;
+
+    @NotNull(message = "Employee joining date is required")
+    @PastOrPresent(message = "Joining date cannot be in the future")
+    private LocalDate joiningDate;
 }

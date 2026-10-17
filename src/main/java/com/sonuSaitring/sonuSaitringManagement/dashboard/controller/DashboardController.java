@@ -12,36 +12,36 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/dashboard")
 public class DashboardController {
 
-    private static final Logger logger = LoggerFactory.getLogger(DashboardController.class);
+        private static final Logger logger = LoggerFactory.getLogger(DashboardController.class);
 
-    private final DashboardService dashboardService;
+        private final DashboardService dashboardService;
 
-    public DashboardController(
-            DashboardService dashboardService) {
+        public DashboardController(
+                        DashboardService dashboardService) {
 
-        this.dashboardService = dashboardService;
-    }
+                this.dashboardService = dashboardService;
+        }
 
-    @GetMapping
-    public ResponseEntity<DashboardResponse> getDashboard(
-            @RequestParam int year,
-            @RequestParam int month) {
+        @GetMapping
+        public ResponseEntity<DashboardResponse> getDashboard(
+                        @RequestParam int year,
+                        @RequestParam int month) {
 
-        logger.info(
-                "Dashboard request received: year={}, month={}",
-                year,
-                month);
+                logger.info(
+                                "Dashboard request received: year={}, month={}",
+                                year,
+                                month);
 
-        ResponseEntity<DashboardResponse> response = ResponseEntity.ok(
-                dashboardService.getDashboard(
-                        year,
-                        month));
+                ResponseEntity<DashboardResponse> response = ResponseEntity.ok(
+                                dashboardService.getDashboard(
+                                                year,
+                                                month));
 
-        logger.info(
-                "Dashboard request completed: year={}, month={}",
-                year,
-                month);
+                logger.info(
+                                "Dashboard request completed: year={}, month={}",
+                                year,
+                                month);
 
-        return response;
-    }
+                return response;
+        }
 }

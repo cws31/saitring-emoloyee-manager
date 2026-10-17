@@ -1,131 +1,76 @@
 package com.sonuSaitring.sonuSaitringManagement.Hisab.controller;
 
-import java.util.List;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-
-import com.sonuSaitring.sonuSaitringManagement.Hisab.entity.Hisab;
-import com.sonuSaitring.sonuSaitringManagement.Hisab.entity.HisabDetail;
+import com.sonuSaitring.sonuSaitringManagement.Hisab.dto.CreateHisabRequestDTO;
+import com.sonuSaitring.sonuSaitringManagement.Hisab.dto.HisabResponseDTO;
+import com.sonuSaitring.sonuSaitringManagement.Hisab.dto.OpeningBalanceRequestDTO;
+import com.sonuSaitring.sonuSaitringManagement.Hisab.dto.RateCorrectionRequestDTO;
 import com.sonuSaitring.sonuSaitringManagement.Hisab.service.HisabService;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/month-closings")
 public class HisabController {
+        private final HisabService service;
 
-    private static final Logger logger = LoggerFactory.getLogger(HisabController.class);
+        public HisabController(HisabService service) {
+                this.service = service;
+        }
 
-    private final HisabService monthClosingService;
+        @PostMapping
+        public org.springframework.http.ResponseEntity<HisabResponseDTO> createOrGet(
+                        @Valid @RequestBody CreateHisabRequestDTO request) {
+                return org.springframework.http.ResponseEntity.status(HttpStatus.OK)
+                                .body(service.getMonthlyHisab(request.getYear(), request.getMonth()));
+        }
 
-    public HisabController(HisabService monthClosingService) {
-        this.monthClosingService = monthClosingService;
-    }
+        @GetMapping
+        public HisabResponseDTO getMonthly(@RequestParam int year, @RequestParam int month) {
+                return service.getMonthlyHisab(year, month);
+        }
 
-    @GetMapping
-    public ResponseEntity<List<Hisab>> getAllMonthClosings() {
+        @GetMapping("/{id}")
+        public HisabResponseDTO get(@PathVariable Long id) {
+                return service.getHisabById(id);
+        }
 
-        logger.info("Month closing list request received");
+        @PostMapping("/{id}/close")
+        public HisabResponseDTO close(@PathVariable Long id) {
+                return service.closeMonth(id);
+        }
 
-        List<Hisab> result = monthClosingService.getAllMonthClosings();
+        @GetMapping("/{id}/employees/{employeeId}")
+        public HisabResponseDTO getEmployee(@PathVariable Long id, @PathVariable Long employeeId) {
+                HisabResponseDTO hisab = service.getHisabById(id);
+                return new HisabResponseDTO(hisab.getId(), hisab.getYear(), hisab.getMonth(), hisab.getStatus(),
+                                hisab.getClosedAt(),
+                                hisab.getTotalEmployees(), hisab.getTotalPayable(), hisab.getTotalOverAdvance(),
+                                hisab.getEmployees().stream().filter(e -> e.getEmployeeId().equals(employeeId))
+                                                .toList());
+        }
 
-        logger.info(
-                "Month closing list request completed: records={}",
-                result.size());
+        @GetMapping("/{id}/employees/{employeeId}/transactions")
+        public Map<String, Object> transactions(@PathVariable Long id, @PathVariable Long employeeId) {
+                return service.getEmployeeTransactions(id, employeeId);
+        }
 
-        return ResponseEntity.ok(result);
-    }
+        @PutMapping("/{id}/employees/{employeeId}/opening-balance")
+        public HisabResponseDTO openingBalance(@PathVariable Long id, @PathVariable Long employeeId,
+                        @Valid @RequestBody OpeningBalanceRequestDTO request) {
+                HisabResponseDTO hisab = service.getHisabById(id);
+                service.setOpeningBalance(employeeId, hisab.getYear(), hisab.getMonth(), request.getOpeningBalance(),
+                                request.getReason());
+                return service.getHisabById(id);
+        }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<Hisab> getMonthClosingById(
-            @PathVariable Long id) {
-
-        logger.info(
-                "Month closing lookup request received: id={}",
-                id);
-
-        Hisab result = monthClosingService.getMonthClosingById(id);
-
-        logger.info(
-                "Month closing lookup completed: id={}",
-                id);
-
-        return ResponseEntity.ok(result);
-    }
-
-    @GetMapping("/search")
-    public ResponseEntity<Hisab> getMonthClosingByYearAndMonth(
-            @RequestParam int year,
-            @RequestParam int month) {
-
-        logger.info(
-                "Month closing search request received: year={}, month={}",
-                year,
-                month);
-
-        Hisab result = monthClosingService.getMonthClosingByYearAndMonth(
-                year,
-                month);
-
-        logger.info(
-                "Month closing search completed: year={}, month={}",
-                year,
-                month);
-
-        return ResponseEntity.ok(result);
-    }
-
-    @GetMapping("/year/{year}/month/{month}")
-    public ResponseEntity<Hisab> getMonthClosingByPathYearAndMonth(
-            @PathVariable int year,
-            @PathVariable int month) {
-
-        logger.info(
-                "Month closing path request received: year={}, month={}",
-                year,
-                month);
-
-        Hisab result = monthClosingService.getMonthClosingByYearAndMonth(
-                year,
-                month);
-
-        logger.info(
-                "Month closing path request completed: year={}, month={}",
-                year,
-                month);
-
-        return ResponseEntity.ok(result);
-    }
-
-    @RequestMapping(value = "/detail/{detailId}/complete", method = {
-            RequestMethod.POST,
-            RequestMethod.PUT,
-            RequestMethod.PATCH
-    })
-    public ResponseEntity<HisabDetail> toggleHisabComplete(
-            @PathVariable Long detailId,
-            @RequestParam boolean completed) {
-
-        logger.info(
-                "Hisab completion update request received: detailId={}, completed={}",
-                detailId,
-                completed);
-
-        HisabDetail updatedDetail = monthClosingService.markEmployeeHisabCompleted(
-                detailId,
-                completed);
-
-        logger.info(
-                "Hisab completion update completed: detailId={}, completed={}",
-                detailId,
-                completed);
-
-        return ResponseEntity.ok(updatedDetail);
-    }
+        @PutMapping("/{id}/employees/{employeeId}/rate")
+        public HisabResponseDTO correctRate(@PathVariable Long id, @PathVariable Long employeeId,
+                        @Valid @RequestBody RateCorrectionRequestDTO request) {
+                HisabResponseDTO hisab = service.getHisabById(id);
+                service.correctRate(employeeId, hisab.getYear(), hisab.getMonth(), request.getDailyRate(),
+                                request.getReason());
+                return service.getHisabById(id);
+        }
 }

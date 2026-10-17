@@ -149,6 +149,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
                                 employee.setOwner(
                                                 currentOwnerService.getCurrentOwner());
+                                employee.setJoiningDate(requestDTO.getJoiningDate());
 
                                 Employee savedEmployee = employeeRepository.save(employee);
 
@@ -225,6 +226,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
                                 employee.setName(
                                                 requestDTO.getName());
+                                employee.setJoiningDate(requestDTO.getJoiningDate());
 
                                 employee.setMobile(
                                                 requestDTO.getMobile());

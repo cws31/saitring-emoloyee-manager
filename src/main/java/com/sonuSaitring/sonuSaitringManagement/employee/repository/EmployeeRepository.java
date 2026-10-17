@@ -10,26 +10,25 @@ import java.util.Optional;
 @Repository
 public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 
-    boolean existsByOwnerIdAndMobile(
-            Long ownerId,
-            String mobile);
+        boolean existsByOwnerIdAndMobile(
+                        Long ownerId,
+                        String mobile);
 
-    Optional<Employee> findByIdAndOwnerId(
-            Long id,
-            Long ownerId);
+        Optional<Employee> findByIdAndOwnerId(
+                        Long id,
+                        Long ownerId);
 
-    Optional<Employee> findByMobileAndOwnerId(
-            String mobile,
-            Long ownerId);
+        Optional<Employee> findByMobileAndOwnerId(
+                        String mobile,
+                        Long ownerId);
 
-    List<Employee> findAllByOwnerId(
-            Long ownerId);
+        List<Employee> findAllByOwnerId(
+                        Long ownerId);
 
-  
-    List<Employee> findAllByOwnerIdAndBlockedFalse(
-            Long ownerId);
+        List<Employee> findAllByOwnerIdAndBlockedFalse(
+                        Long ownerId);
 
-    void deleteByIdAndOwnerId(
-            Long id,
-            Long ownerId);
+        void deleteByIdAndOwnerId(
+                        Long id,
+                        Long ownerId);
 }

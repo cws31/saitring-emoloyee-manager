@@ -1,30 +1,21 @@
 package com.sonuSaitring.sonuSaitringManagement.advanceMoney.dto;
 
-import java.time.LocalDate;
-
 import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.Data;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
-@Setter 
-@Getter 
-@AllArgsConstructor 
-@NoArgsConstructor 
+@Data
+@AllArgsConstructor
 public class AdvanceResponseDTO {
-
     private Long id;
-
     private Long employeeId;
-
     private String employeeName;
-
-    private String employeeMobile;
-
-    private Double amount;
-
+    private BigDecimal amount;
     private LocalDate paymentDate;
-
     private String note;
-
+    private BigDecimal runningBalance;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }
